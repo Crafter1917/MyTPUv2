@@ -130,26 +130,16 @@
                 android:orientation="vertical"
                 android:layout_marginTop="8dp">
 
-                <Button
-                    android:id="@+id/button_recent_course1"
+                <LinearLayout
+                    android:id="@+id/recentcoursesContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Недавний курс 1"
-                    android:background="@android:color/holo_blue_dark" />
+                    android:orientation="vertical">
+                </LinearLayout>
 
-                <Button
-                    android:id="@+id/button_recent_course2"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Недавний курс 2"
-                    android:background="@android:color/holo_purple" />
 
-                <Button
-                    android:id="@+id/button_recent_course3"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Недавний курс 3"
-                    android:background="@android:color/holo_orange_dark" />
+
+
             </LinearLayout>
             <TextView
                 android:id="@+id/logTextView"

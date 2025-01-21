@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+    <TextView
+        android:id="@+id/dashboardTextView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:text="Загрузка данных..."
+        android:textSize="16sp" />
+    <!-- Панель навигации закреплена сверху -->
+    <LinearLayout
+        android:id="@+id/navigation_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:background="@android:color/white"
+        android:elevation="4dp"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <Button
+            android:id="@+id/button_schedule"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="12"
+            android:background="@android:color/holo_blue_light"
+            android:text="Расписание" />
+
+        <Button
+            android:id="@+id/button_mail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="12"
+            android:background="@android:color/holo_green_light"
+            android:text="Почта" />
+
+        <Button
+            android:id="@+id/button_sites"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="12"
+            android:background="@android:color/holo_orange_light"
+            android:text="Сайты" />
+
+        <Button
+            android:id="@+id/logoutButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="12"
+            android:background="@android:color/holo_red_light"
+            android:text="Выход" />
+    </LinearLayout>
+
+    <!-- Основное содержимое страницы -->
+    <ScrollView
+        android:id="@+id/main_scroll_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/navigation_panel"
+        android:layout_marginTop="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Заголовок страницы -->
+            <TextView
+                android:id="@+id/welcomeTextView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="ЛИЧНЫЙ КАБИНЕТ"
+
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="12dp"
+                android:textSize="24sp" />
+
+            <!-- Оповещения -->
+            <TextView
+                android:id="@+id/notification_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Уведомления"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:id="@+id/notificationTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Нет новых уведомлений"
+                android:textColor="@android:color/darker_gray" />
+
+            <!-- Ссылки на курсы и ресурсы -->
+            <TextView
+                android:id="@+id/course_overview_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Обзор курсов"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <LinearLayout
+                android:id="@+id/coursesContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+            </LinearLayout>
+
+
+
+            <!-- Недавно посещенные курсы -->
+            <TextView
+                android:id="@+id/recent_courses_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Недавно посещенные курсы"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp">
+
+                <Button
+                    android:id="@+id/button_recent_course1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Недавний курс 1"
+                    android:background="@android:color/holo_blue_dark" />
+
+                <Button
+                    android:id="@+id/button_recent_course2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Недавний курс 2"
+                    android:background="@android:color/holo_purple" />
+
+                <Button
+                    android:id="@+id/button_recent_course3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Недавний курс 3"
+                    android:background="@android:color/holo_orange_dark" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/logTextView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:hint="логи" />
+        </LinearLayout>
+
+    </ScrollView>
+
+</RelativeLayout>

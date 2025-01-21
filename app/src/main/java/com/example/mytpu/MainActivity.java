@@ -112,8 +112,9 @@ public class MainActivity extends AppCompatActivity {
                 if (sesskeyElement != null) {
                     sesskey = sesskeyElement.attr("value");
                     addLog("Sesskey извлечен: " + sesskey);
+                    navigateToDashboard();
                 }
-
+//ну типа тест изменений с гитом
                 Element tokenElement = document.selectFirst("input[name=logintoken]");
                 if (tokenElement == null) {
                     throw new IOException("Не удалось найти logintoken на странице.");

@@ -13,49 +13,7 @@
         android:text="Загрузка данных..."
         android:textSize="16sp" />
     <!-- Панель навигации закреплена сверху -->
-    <LinearLayout
-        android:id="@+id/navigation_panel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:background="@android:color/white"
-        android:elevation="4dp"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/button_schedule"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="12"
-            android:background="@android:color/holo_blue_light"
-            android:text="Расписание" />
-
-        <Button
-            android:id="@+id/button_mail"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="12"
-            android:background="@android:color/holo_green_light"
-            android:text="Почта" />
-
-        <Button
-            android:id="@+id/button_sites"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="12"
-            android:background="@android:color/holo_orange_light"
-            android:text="Сайты" />
-
-        <Button
-            android:id="@+id/logoutButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="12"
-            android:background="@android:color/holo_red_light"
-            android:text="Выход" />
-    </LinearLayout>
-
+    <include layout="@layout/navigation_panel"/>
     <!-- Основное содержимое страницы -->
     <ScrollView
         android:id="@+id/main_scroll_view"
@@ -130,26 +88,16 @@
                 android:orientation="vertical"
                 android:layout_marginTop="8dp">
 
-                <Button
-                    android:id="@+id/button_recent_course1"
+                <LinearLayout
+                    android:id="@+id/recentcoursesContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Недавний курс 1"
-                    android:background="@android:color/holo_blue_dark" />
+                    android:orientation="vertical">
+                </LinearLayout>
 
-                <Button
-                    android:id="@+id/button_recent_course2"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Недавний курс 2"
-                    android:background="@android:color/holo_purple" />
 
-                <Button
-                    android:id="@+id/button_recent_course3"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Недавний курс 3"
-                    android:background="@android:color/holo_orange_dark" />
+
+
             </LinearLayout>
             <TextView
                 android:id="@+id/logTextView"

@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -44,6 +45,7 @@ public class DashboardActivity extends AppCompatActivity {
     private OkHttpClient client;
     private TextView logTextView;
     private Button logoutButton;
+    private Button scheduleButton;
     private SharedPreferences sharedPreferences;
     private ExecutorService executor;
     private String sesskey;
@@ -61,6 +63,7 @@ public class DashboardActivity extends AppCompatActivity {
 
         logTextView = findViewById(R.id.logTextView);
         logoutButton = findViewById(R.id.logoutButton);
+        scheduleButton = findViewById(R.id.button_schedule);
 
         // Настройка безопасного хранилища
         try {
@@ -90,6 +93,10 @@ public class DashboardActivity extends AppCompatActivity {
         logoutButton.setOnClickListener(v -> {
             executor.execute(this::logout);
         });
+        scheduleButton.setOnClickListener(v -> {
+            executor.execute(this::schedule);
+        });
+
     }
 
     private void addLog(String message) {
@@ -241,6 +248,11 @@ public class DashboardActivity extends AppCompatActivity {
         });
     }
 
+    private void schedule() {
+        Intent intent = new Intent(this, ScheduleActivity.class);
+        startActivity(intent);
+        finish();
+    }
 
     private void navigateToMainActivity() {
         Intent intent = new Intent(this, MainActivity.class);

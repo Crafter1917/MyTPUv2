@@ -3,7 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
-        android:usesCleartextTraffic="true"
         android:name=".MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -25,9 +24,12 @@
             </intent-filter>
         </activity>
         <activity android:name=".DashboardActivity" />
-        <activity android:name=".GroupScheduleActivity" />
-        <activity android:name=".ScheduleActivity" />
+
+
+
+
 
     </application>
+
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

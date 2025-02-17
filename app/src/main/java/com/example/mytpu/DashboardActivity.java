@@ -6,7 +6,6 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -39,13 +38,12 @@ import okhttp3.Response;
 public class DashboardActivity extends AppCompatActivity {
 
     private static final String TAG = "DashboardActivity";
-    private LinearLayout recentcoursesContainer;
+    private TextView notificationTextView;
     private TextView welcomeTextView;
     private LinearLayout coursesContainer;
     private OkHttpClient client;
     private TextView logTextView;
     private Button logoutButton;
-    private Button scheduleButton;
     private SharedPreferences sharedPreferences;
     private ExecutorService executor;
     private String sesskey;
@@ -57,13 +55,13 @@ public class DashboardActivity extends AppCompatActivity {
         setContentView(R.layout.activity_dashboard);
 
         coursesContainer = findViewById(R.id.coursesContainer);
+        notificationTextView = findViewById(R.id.notificationTextView);
         welcomeTextView = findViewById(R.id.welcomeTextView);
-        recentcoursesContainer = findViewById(R.id.recentcoursesContainer);
+
         client = ((MyApplication) getApplication()).getClient();
 
         logTextView = findViewById(R.id.logTextView);
         logoutButton = findViewById(R.id.logoutButton);
-        scheduleButton = findViewById(R.id.button_schedule);
 
         // Настройка безопасного хранилища
         try {
@@ -93,17 +91,13 @@ public class DashboardActivity extends AppCompatActivity {
         logoutButton.setOnClickListener(v -> {
             executor.execute(this::logout);
         });
-        scheduleButton.setOnClickListener(v -> {
-            executor.execute(this::schedule);
-        });
-
     }
 
     private void addLog(String message) {
         runOnUiThread(() -> logTextView.append(message + "\n"));
     }
 
-    private void login(String username) {
+    private void login(String username, String password) {
         try {
             addLog("Начало логина для пользователя: " + username);
 
@@ -132,32 +126,13 @@ public class DashboardActivity extends AppCompatActivity {
                     String userName = userElement != null ? userElement.attr("title") : "Имя не найдено";
                     Log.d(TAG, "Имя пользователя: " + userName);
 
-                    Elements courseElements = document.select("li.list-group-item.list-group-item-action[data-parent-key=mycourses]").not("[data-key=courseindexpage]");
-                    Elements recentCourseElements = document.select("div.recent-courses .card");
-
-
-
-                    //курсы и недавние курсы
+                    Elements courseElements = document.select("li.list-group-item.list-group-item-action");
                     List<Course> courses = new ArrayList<>();
-                    List<recentCourse> recentcourses = new ArrayList<>();
-                    // недавние курсы
-                    for (Element element : recentCourseElements) {
-                        Element recentlinkElement = element.selectFirst("a");
-                        Element recentcourseNameElement = element.selectFirst("span");
-
-                        if (recentlinkElement != null && recentcourseNameElement != null ) {
-                            String recentcourseName = recentcourseNameElement.text();
-                            String recentcourseUrl = recentlinkElement.attr("href");
-                            recentcourses.add(new recentCourse(recentcourseName, recentcourseUrl));
-                            Log.d(TAG, "недавние Курс найден: " + recentcourseName + " - " + recentcourseUrl);
-                        } else Log.d(TAG, "недавние Курс не найден ");
-                    }
-                    //курсы
                     for (Element element : courseElements) {
                         Element linkElement = element.selectFirst("a[href]");
                         Element courseNameElement = element.selectFirst("span.media-body");
 
-                        if (linkElement != null && courseNameElement != null ) {
+                        if (linkElement != null && courseNameElement != null) {
                             String courseName = courseNameElement.text();
                             String courseUrl = linkElement.attr("href");
                             courses.add(new Course(courseName, courseUrl));
@@ -165,7 +140,7 @@ public class DashboardActivity extends AppCompatActivity {
                         }
                     }
 
-                    runOnUiThread(() -> updateUI(userName, courses, recentcourses));
+                    runOnUiThread(() -> updateUI(userName, courses));
 
                 } catch (Exception e) {
                     Log.e(TAG, "Ошибка обработки HTML: ", e);
@@ -185,7 +160,7 @@ public class DashboardActivity extends AppCompatActivity {
 
         if (username != null && password != null) {
             addLog("Выполняется автовход для пользователя: " + username);
-            login(username);
+            login(username, password);
         } else {
             navigateToMainActivity();
         }
@@ -248,11 +223,6 @@ public class DashboardActivity extends AppCompatActivity {
         });
     }
 
-    private void schedule() {
-        Intent intent = new Intent(this, ScheduleActivity.class);
-        startActivity(intent);
-        finish();
-    }
 
     private void navigateToMainActivity() {
         Intent intent = new Intent(this, MainActivity.class);
@@ -261,15 +231,10 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
 
-    private void updateUI(String userName, List<Course> courses, List<recentCourse> recentcourses) {
+    private void updateUI(String userName, List<Course> courses) {
         welcomeTextView.setText("Добро пожаловать, " + userName + "!");
         coursesContainer.removeAllViews();
-        recentcoursesContainer.removeAllViews();
 
-        // курсы
-        if (courses.isEmpty()) {
-            Log.d(TAG, "Список курсов пуст.");
-        } else {
         for (Course course : courses) {
             Button courseButton = new Button(this);
             courseButton.setText(course.getName());
@@ -278,24 +243,7 @@ public class DashboardActivity extends AppCompatActivity {
                 startActivity(browserIntent);
             });
             coursesContainer.addView(courseButton);
-            Log.d(TAG,courses.toString());
-        }}
-
-        // недавние курсы
-        if (recentcourses.isEmpty()) {
-            Log.d(TAG, "Список недавних курсов пуст.");
-        } else {
-            for (recentCourse recentcourse : recentcourses) {
-                Button recentcourseButton = new Button(this);
-                recentcourseButton.setText(recentcourse.getName());
-                recentcourseButton.setOnClickListener(v -> {
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(recentcourse.getUrl()));
-                    startActivity(browserIntent);
-                });
-                recentcoursesContainer.addView(recentcourseButton);
-            }
         }
-
     }
 
     public static class Course {
@@ -306,26 +254,6 @@ public class DashboardActivity extends AppCompatActivity {
             this.name = name;
             this.url = url;
         }
-
-
-        public String getName() {
-            return name;
-        }
-
-        public String getUrl() {
-            return url;
-        }
-    }
-
-    public static class recentCourse {
-        private final String name;
-        private final String url;
-
-        public recentCourse(String name, String url) {
-            this.name = name;
-            this.url = url;
-        }
-
 
         public String getName() {
             return name;

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/navigation_panel"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -8,8 +9,8 @@
     android:elevation="4dp"
     android:gravity="center|center_horizontal|center_vertical"
     android:orientation="horizontal"
-    android:paddingTop="24dp"
-    android:paddingBottom="24dp">
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
 
     <Button
         android:id="@+id/button_schedule"
@@ -48,7 +49,8 @@
         android:paddingBottom="6sp"
         android:text="Сайты"
         android:textSize="10sp"
-        app:icon="@android:drawable/ic_menu_mapmode" />
+        app:icon="@android:drawable/ic_menu_mapmode"
+        tools:ignore="ButtonStyle" />
 
     <Button
         android:id="@+id/logoutButton"
@@ -60,6 +62,7 @@
         android:paddingRight="6sp"
         android:paddingBottom="6sp"
         android:text="Выход"
+        android:textColor="#212121"
         android:textSize="10sp"
         app:icon="@android:drawable/ic_lock_power_off" />
 

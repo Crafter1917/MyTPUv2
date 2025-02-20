@@ -1,20 +1,29 @@
 package com.example.mytpu;
-import android.content.AttributionSource;
-import android.os.Build;
+import static com.example.mytpu.R.id.dataPrevious;
+
+import android.annotation.SuppressLint;
 import android.view.View;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.ViewTreeObserver;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-
-import androidx.annotation.RequiresApi;
+import android.animation.ObjectAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.view.View;
+import android.view.animation.OvershootInterpolator;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 
@@ -34,22 +43,57 @@ public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
     private LinearLayout scheduleContainer;
-    private TextView dataPrevious, CurrectData, dataNext, lastUpdateTextView;
+    private TextView dataPrevious, CurrectData, dataNext, lastUpdateTextView, compactCurrentDate;
     private OkHttpClient client;
     private ExecutorService executor;
-    private int selectedWeek;
-    private int selectedYear;
-    private int currentData;
-    private String jsonDataOfSite;
 
-    private boolean ClearData = false;
-    private int startDayStr;
-    private int endDayStr;
+    private int currentData, currentDatam ,selectedYear,selectedWeek, height, endDayStr, startDayStr, endMStr;
+    private String jsonDataOfSite;
+    private String startTime;
+    private boolean cWN, ClearData = false;
+    Map<String, LinearLayout> paraContainers = new HashMap<>();
+
+
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_schedule);
+        ScrollView scrollView = findViewById(R.id.scrollView);
+        LinearLayout fullWeekNavigation = findViewById(R.id.fullWeekNavigation);
+        LinearLayout compactWeekNavigation = findViewById(R.id.compactWeekNavigation);
+        fullWeekNavigation.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                // Убираем слушатель, чтобы он сработал один раз
+                fullWeekNavigation.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+
+                height = fullWeekNavigation.getHeight();
+
+                // Здесь можно использовать полученные размеры
+            }
+        });
+
+        scrollView.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+            @Override
+            public void onScrollChange(View v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+
+                if (scrollY > height * 2 && !cWN) {
+                    // Скроллим вниз
+                    animateViewTransition(fullWeekNavigation, compactWeekNavigation);
+                    cWN = true;
+                }  if (scrollY < height && cWN) {
+                    // Скроллим вверх
+                    animateViewTransition(compactWeekNavigation, fullWeekNavigation);
+                    cWN = false;
+                }
+            }
+        });
+
+// Метод для анимации перехода между двумя View
+
 
         scheduleContainer = findViewById(R.id.scheduleContainer);
         client = new OkHttpClient();
@@ -60,18 +104,61 @@ public class ScheduleActivity extends AppCompatActivity {
         selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
         selectedYear = calendar.get(Calendar.YEAR);
         currentData = calendar.get(Calendar.DATE);
+        currentDatam = calendar.get(Calendar.MONTH)+1;
 
         dataPrevious = findViewById(R.id.dataPrevious);
         CurrectData = findViewById(R.id.CurrectData);
+        compactCurrentDate = findViewById(R.id.compactCurrentDate);
         dataNext = findViewById(R.id.dataNext);
 
 
         // Настройка кнопок
         Button btnPreviousWeek = findViewById(R.id.btnPreviousWeek);
-        Button btnCurrectWeek = findViewById(R.id.btnCurrectWeek);
+        Button btnCurrectWeek = findViewById(R.id.btnCurrentWeek);
         Button btnNextWeek = findViewById(R.id.btnNextWeek);
+        @SuppressLint({"MissingInflatedId", "LocalSuppress"}) ImageButton btnPreviousWeekI = findViewById(R.id.btnCompactPreviousWeekI);
+        @SuppressLint({"MissingInflatedId", "LocalSuppress"})ImageButton btnCurrectWeekI = findViewById(R.id.btnCompactCurrentWeekI);
+        @SuppressLint({"MissingInflatedId", "LocalSuppress"})ImageButton btnNextWeekI = findViewById(R.id.btnCompactNextWeekI);
         updateDates();
 
+        EditText searchField = findViewById(R.id.searchField);
+        searchField.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch(searchField.getText().toString());
+                return true;
+            }
+            return false;
+        });
+
+        btnPreviousWeekI.setOnClickListener(v -> {
+            selectedWeek--;
+            if (selectedWeek < 1) {
+                selectedWeek = 52;
+                selectedYear--;
+            }
+            ClearData = true;
+            updateDates();
+            parseSchedule(jsonDataOfSite);
+        });
+        btnCurrectWeekI.setOnClickListener(v ->{
+
+            selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
+            selectedYear = calendar.get(Calendar.YEAR);
+            ClearData = true;
+            updateDates();
+            parseSchedule(jsonDataOfSite);
+        });
+        btnNextWeekI.setOnClickListener(v -> {
+            selectedWeek++;
+            if (selectedWeek > 52) {
+                selectedWeek = 1;
+                selectedYear++;
+            }
+
+            ClearData = true;
+            updateDates();
+            parseSchedule(jsonDataOfSite);
+        });
 
         btnPreviousWeek.setOnClickListener(v -> {
             selectedWeek--;
@@ -107,6 +194,43 @@ public class ScheduleActivity extends AppCompatActivity {
         loadSchedule();
     }
 
+    private void performSearch(String string) {
+    }
+
+    private void animateJellyEffect(View view) {
+        view.setScaleX(0.8f);
+        view.setScaleY(0.8f);
+        view.setAlpha(0f);
+
+        view.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .setDuration(500) // Длительность анимации
+                .setInterpolator(new OvershootInterpolator(1.5f)) // Эффект "желе"
+                .start();
+    }
+
+    // Модифицируем метод animateViewTransition
+    private void animateViewTransition(View viewToHide, View viewToShow) {
+        // Анимация для скрытия viewToHide
+        ObjectAnimator hideAnimator = ObjectAnimator.ofFloat(viewToHide, "alpha", 1f, 0f);
+        hideAnimator.setDuration(300); // Длительность анимации
+        hideAnimator.start();
+
+        // Анимация для показа viewToShow
+        animateJellyEffect(viewToShow); // Применяем "желеобразную" анимацию
+
+        // Устанавливаем видимость после завершения анимации
+        hideAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                viewToHide.setVisibility(View.GONE);
+                viewToShow.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
     private void loadSchedule() {
          // Очищаем контейнер перед загрузкой новых данных
         executor.execute(() -> {
@@ -136,6 +260,22 @@ public class ScheduleActivity extends AppCompatActivity {
         return (weekday >= 0 && weekday < days.length) ? days[weekday] : "Неизвестный день";
     }
 
+    private String determineParaNumber(String time) {
+        if (time.contains("08:30") || time.contains("10:05")) {
+            return "1";
+        } else if (time.contains("10:20") || time.contains("11:55")) {
+            return "2";
+        } else if (time.contains("12:45") || time.contains("14:20")) {
+            return "3";
+        } else if (time.contains("14:35") || time.contains("16:05")) {
+            return "4";
+        } else if (time.contains("16:20") || time.contains("17:75")) {
+            return "5";
+        } else {
+            return "6";
+        }
+    }
+
     private boolean[] hasLessons = new boolean[7]; // Индекс 0 - понедельник, 6 - воскресенье
 
     private void parseSchedule(String jsonData) {
@@ -147,7 +287,28 @@ public class ScheduleActivity extends AppCompatActivity {
                 if (faculties == null) return;
 
                 SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
-                                // Обработка JSON...
+                if (ClearData) {
+                    for (int kkk = 1; kkk <= 6; kkk++) {
+                        String containerIdkkk = "scheduleContainer" + getDayId(kkk);
+                        LinearLayout containerkkk = findViewById(getResources().getIdentifier(containerIdkkk, "id", getPackageName()));
+                        if (containerkkk == null) continue;
+
+                        // Удаляем только динамические CardView с тегом
+                        for (int i = containerkkk.getChildCount() - 1; i >= 0; i--) {
+                            View child = containerkkk.getChildAt(i);
+                            if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
+                                containerkkk.removeViewAt(i);
+                            }
+                        }
+
+                        Log.d("ClearData", "Cleared day " + kkk);
+                    }
+
+                    paraContainers.clear();
+                    ClearData = false;
+                }
+
+                // Обработка JSON...
                 for (int i = 0; i < faculties.length(); i++) {
                     JSONObject faculty = faculties.optJSONObject(i);
                     if (faculty == null) continue;
@@ -197,7 +358,7 @@ public class ScheduleActivity extends AppCompatActivity {
                             int subgroups = lesson.optInt("subgroups", 0);
 
                             JSONObject time = lesson.optJSONObject("time");
-                            String startTime = (time != null) ? time.optString("start", "00:00") : "00:00";
+                            startTime = (time != null) ? time.optString("start", "00:00") : "00:00";
                             String endTime = (time != null) ? time.optString("end", "00:00") : "00:00";
 
                             String dayOfWeek = getDayName(weekday);
@@ -230,20 +391,21 @@ public class ScheduleActivity extends AppCompatActivity {
                             // Вызываем метод с отдельными параметрами
                             addLessonToUI(subject, lessonType, subgroupsTpue, timeText, audience, teacher, weekday);
                             Log.d(TAG, "subject: "+subject+" lessonType: "+ lessonType+" subgroupsTpue: "+ subgroupsTpue+" timeText: "+ timeText+" audience: "+
-                                    audience+" teacher: "+ teacher+" weekday: "+ weekday + " startDateStr: "+startDateStr);
+                                    audience+" teacher: "+ teacher+" weekday: "+ weekday );
                             endDayStr = Integer.parseInt(endDateStr.split("\\.")[0]);
                             startDayStr = Integer.parseInt(startDateStr.split("\\.")[0]);
+                            endMStr = Integer.parseInt(endDateStr.split("\\.")[1]);
                         }
                     }
                 }
-                updateDayVisibility(endDayStr, startDayStr);
+                updateDayVisibility(endDayStr, startDayStr, endMStr);
             } catch (JSONException e) {
                 showError("Ошибка разбора данных: " + e.getMessage());
             }
         });
     }
 
-    private void updateDayVisibility(int endDayStr, int startDayStr) {
+    private void updateDayVisibility(int endDayStr, int startDayStr, int endMStr) {
         // Получаем текущий день недели (1 - воскресенье, 2 - понедельник, ..., 7 - суббота)
         Calendar calendar = Calendar.getInstance();
         int currentDay = calendar.get(Calendar.DAY_OF_WEEK);
@@ -260,6 +422,8 @@ public class ScheduleActivity extends AppCompatActivity {
                 R.id.scheduleContainerSaturday,
                 R.id.scheduleContainerSunday
         };
+
+
 
         for (int i = 0; i < dayIds.length; i++) {
 
@@ -278,13 +442,16 @@ public class ScheduleActivity extends AppCompatActivity {
                 }
             }
         }
-        Log.d("updateDayVisibility", "currentData: "+ currentData+ " endDayStr: "+endDayStr+" startDayStr: "+ startDayStr);
+
+
+
+        Log.d("updateDayVisibility", "currentData: "+ currentData+ " endDayStr: "+endDayStr+" startDayStr: "+ startDayStr+" currentDatam: "+ currentDatam+" endMStr: "+ endMStr);
         if (adjustedDay >= 1 && adjustedDay <= 7) {
             LinearLayout todayContainer = findViewById(dayIds[adjustedDay - 1]);
             if (todayContainer != null) {
                 CardView todayCard = (CardView) todayContainer.getParent();
                 if (todayCard != null) {
-                    if (currentData <= endDayStr && currentData >= startDayStr) {
+                    if (currentData <= endDayStr && currentData >= startDayStr && endMStr == currentDatam) {
 
                     todayCard.setCardElevation(8f); // Увеличиваем "поднятие" для выделенного дня
                     todayCard.setBackgroundResource(R.drawable.border); // Устанавливаем рамку
@@ -294,48 +461,48 @@ public class ScheduleActivity extends AppCompatActivity {
         }
 
     }
-
     // Метод для добавления пары в UI
     private void addLessonToUI(String subject, String type, String subgroups, String time, String audience, String teacher, int weekday) {
-        // Находим контейнер по дню недели
-
-
-        // Очищаем только занятия, оставляя заголовок дня
-        if (ClearData) {
-
-            for (int kkk = 0;kkk <=6; kkk++) {
-                String containerIdkkk = "scheduleContainer" + getDayId(kkk);
-                LinearLayout containerkkk = findViewById(getResources().getIdentifier(containerIdkkk, "id", getPackageName()));
-                if (containerkkk == null) return;
-
-                for (int i = containerkkk.getChildCount() - 1; i >= 0; i--) {
-                    View child = containerkkk.getChildAt(i);
-                    Object tag = child.getTag();
-                    if (tag != null && tag.equals("lessonCard")) {
-                        containerkkk.removeViewAt(i); // Удаляем только карточки с занятиями
-                    }
-                }
-                Log.d("getChildCount", "addLessonToUI: container.getChildCount(): " + containerkkk.getChildCount());
-            }
-            ClearData = false;
-        }
-
-
-
         // Находим контейнер по дню недели
         String containerId = "scheduleContainer" + getDayId(weekday);
         LinearLayout container = findViewById(getResources().getIdentifier(containerId, "id", getPackageName()));
         if (container == null) return;
+        // Формируем уникальный ключ для хранения контейнера пары
+        String key = weekday + "_" + time;
 
-        // Создаем новую CardView для урока (на основе XML-разметки)
+        // Ищем lessonContainer только в рамках этого дня и времени
+        LinearLayout lessonContainer = paraContainers.get(key);
+
+        // Если не существует, создаем новый CardView для пары
+        if (lessonContainer == null) {
+            // Создаем новую CardView для пары (на основе XML-разметки)
+            CardView paraCard = (CardView) LayoutInflater.from(this)
+                    .inflate(R.layout.para_card_template, container, false);
+            paraCard.setTag("dynamicParaCard"); // Добавляем тег
+
+            // Находим контейнер для уроков внутри этой пары
+            lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
+
+            // Устанавливаем текст номера пары
+            TextView paraText = paraCard.findViewById(R.id.para);
+            paraText.setText(determineParaNumber(time) + " пара");
+
+            // Добавляем новую CardView для пары в контейнер
+            container.addView(paraCard);
+
+            // Сохраняем ссылку на контейнер для этого времени
+            paraContainers.put(key, lessonContainer);
+        }
+
+// Создаем новую CardView для урока (на основе XML-разметки)
         CardView lessonCard = (CardView) LayoutInflater.from(this)
-                .inflate(R.layout.lesson_card_template, container, false);
+                .inflate(R.layout.lesson_card_template, lessonContainer, false);
 
-        // Устанавливаем тег для идентификации
+// Устанавливаем тег для идентификации
         lessonCard.setTag("lessonCard");
 
         // Заполняем данные
-        TextView subgroupsTV = lessonCard.findViewById(R.id.subgroups);
+        TextView subgroupsTV = lessonCard.findViewById(R.id.para);
         TextView subjectTV = lessonCard.findViewById(R.id.subject);
         TextView timeTV = lessonCard.findViewById(R.id.time);
         TextView audiencesTV = lessonCard.findViewById(R.id.audiences);
@@ -350,9 +517,8 @@ public class ScheduleActivity extends AppCompatActivity {
         teachersTV.setText(teacher);
 
         // Добавляем CardView в контейнер
-        container.addView(lessonCard);
+        lessonContainer.addView(lessonCard);
     }
-
     // Вспомогательный метод для получения идентификатора дня
     private String getDayId(int weekday) {
         switch (weekday) {
@@ -376,6 +542,7 @@ public class ScheduleActivity extends AppCompatActivity {
         // Отображаем даты
         String currentDate = sdf.format(calendar.getTime());
         CurrectData.setText(currentDate);  // Текущая неделя
+        compactCurrentDate.setText(currentDate);  // Текущая неделя
 
         // Предыдущая неделя
         calendar.add(Calendar.WEEK_OF_YEAR, -1);
@@ -387,14 +554,12 @@ public class ScheduleActivity extends AppCompatActivity {
         String nextDate = sdf.format(calendar.getTime());
         dataNext.setText(nextDate);
     }
-
     // Открытие расписания группы
     private void showGroupSchedule(GroupSchedule schedule) {
         Intent intent = new Intent(this, GroupScheduleActivity.class);
         intent.putExtra("schedule", schedule.getSchedule());
         startActivity(intent);
     }
-
 
     private void showError(String message) {
         runOnUiThread(() -> {

@@ -15,68 +15,106 @@
         android:layout_marginTop="8dp">
 
         <LinearLayout
+            android:id="@+id/scheduleContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:id="@+id/scheduleContainer"
-            >
+            android:padding="0dp">
 
             <TextView
+                android:id="@+id/groups"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Расписание группы 17В11"
-                android:id="@+id/groups"
-                android:textSize="20sp"
-                android:textStyle="bold"
+                android:layout_marginBottom="12dp"
                 android:gravity="center"
-                android:layout_marginBottom="12dp"/>
+                android:text="Расписание группы 17В11"
+                android:textSize="20sp"
+                android:textStyle="bold" />
             <!-- TextView для отображения времени последнего обновления -->
-            <TextView
-                android:id="@+id/lastUpdateTextView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Последнее обновление: "
-                android:textSize="14sp"
-                android:layout_marginBottom="16dp"/>
 
             <!-- Переключение недель -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
+                android:layout_marginBottom="16dp"
                 android:gravity="center"
-                android:layout_marginBottom="16dp">
+                android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/btn_odd_week"
+                    android:id="@+id/btnPreviousWeek"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:backgroundTint="#8954FF"
+                    android:text="Предыдущая неделя"
+                    android:textSize="12sp"/>
+
+                <Button
+                    android:id="@+id/btnCurrectWeek"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:backgroundTint="#6200EA"
                     android:text="Текущая неделя"
                     android:textSize="12sp" />
 
                 <Button
-                    android:id="@+id/btn_even_week"
+                    android:id="@+id/btnNextWeek"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:backgroundTint="#A567FF"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
                     android:text="Следущая неделя"
-                    android:textSize="12sp" />
+                    android:textSize="12sp"/>
+
             </LinearLayout>
 
             <!-- Дни недели -->
             <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:id="@+id/dataPrevious"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="TextView" />
+
+                <TextView
+                    android:id="@+id/CurrectData"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="TextView" />
+
+                <TextView
+                    android:id="@+id/dataNext"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="TextView" />
+            </LinearLayout>
+
+            <LinearLayout
 
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                >
+                android:orientation="vertical">
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
+
                     app:cardCornerRadius="16dp">
 
                     <LinearLayout
@@ -92,41 +130,41 @@
                             android:layout_height="wrap_content"
                             android:text="Понедельник"
                             android:textSize="16sp"
-                            android:textStyle="bold"/>
+                            android:textStyle="bold" />
 
                         <!-- Сюда будут добавляться элементы уроков -->
 
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp"
-                    android:text="Понедельник">
+                    android:text="Понедельник"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerTuesday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerTuesday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Вторник"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
-                            
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
+
 
                             <!-- Добавить аналогичные блоки для других пар -->
                         </LinearLayout>
@@ -134,35 +172,34 @@
                     </LinearLayout>
 
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp"
-                    android:text="Понедельник">
+                    android:text="Понедельник"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerWednesday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerWednesday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Среда"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
-                            
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
 
 
                             <!-- Добавить аналогичные блоки для других пар -->
@@ -171,34 +208,34 @@
                     </LinearLayout>
 
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp"
-                    android:text="Понедельник">
+                    android:text="Понедельник"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerThursday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerThursday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Четверг"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
 
 
                             <!-- Добавить аналогичные блоки для других пар -->
@@ -207,34 +244,33 @@
                     </LinearLayout>
 
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    app:cardCornerRadius="16dp"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="8dp"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerFriday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerFriday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Пятница"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
-                            
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
 
 
                             <!-- Добавить аналогичные блоки для других пар -->
@@ -243,35 +279,35 @@
                     </LinearLayout>
 
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp"
-                    android:text="Понедельник">
+                    android:text="Понедельник"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerSaturday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerSaturday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Суббота"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
-                            
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
+
 
                             <!-- Добавить аналогичные блоки для других пар -->
                         </LinearLayout>
@@ -279,35 +315,34 @@
                     </LinearLayout>
 
                 </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp"
-                    android:text="Понедельник">
+                    android:text="Понедельник"
+                    app:cardCornerRadius="16dp">
 
                     <LinearLayout
+                        android:id="@+id/scheduleContainerSunday"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:padding="12dp"
-                        android:id="@+id/scheduleContainerSunday"
-                        >
+                        android:padding="12dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="Воскресенье"
-                            android:textStyle="bold"
-                            android:textSize="16sp"/>
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <!-- Элементы пар -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
-                            android:layout_marginTop="8dp">
-                            
+                            android:layout_marginTop="8dp"
+                            android:orientation="vertical">
 
 
                             <!-- Добавить аналогичные блоки для других пар -->
@@ -323,10 +358,10 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Обновлено: 17.02.2025 12:44"
-                android:textSize="12sp"
+                android:layout_marginTop="8dp"
                 android:gravity="end"
-                android:layout_marginTop="8dp"/>
+                android:text="Обновлено: 17.02.2025 12:44"
+                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 </RelativeLayout>

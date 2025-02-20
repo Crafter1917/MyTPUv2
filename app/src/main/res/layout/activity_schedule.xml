@@ -1,83 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:padding="16dp">
+    android:layout_height="match_parent">
 
-    <!-- Общая навигационная панель (как в примере) -->
-    <include layout="@layout/navigation_panel"/>
-    <ScrollView
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/navigation_panel"
-        android:layout_marginTop="8dp">
-
-        <LinearLayout
-            android:id="@+id/scheduleContainer"
+        android:orientation="vertical">
+        <!-- Поисковая строка -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="0dp">
+            android:layout_margin="8dp"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="4dp"
+            tools:ignore="NotSibling">
 
-            <TextView
-                android:id="@+id/groups"
+            <EditText
+                android:id="@+id/searchField"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:gravity="center"
-                android:text="Расписание группы 17В11"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-            <!-- TextView для отображения времени последнего обновления -->
+                android:layout_height="40dp"
+                android:background="@null"
+                android:hint="Поиск (группа, аудитория, преподаватель)"
+                android:imeOptions="actionSearch"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                tools:ignore="TouchTargetSizeCheck" />
+        </androidx.cardview.widget.CardView>
 
-            <!-- Переключение недель -->
+        <!-- Полная версия (исчезает при скролле) -->
+        <LinearLayout
+            android:id="@+id/fullWeekNavigation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
                 android:gravity="center"
                 android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnPreviousWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#8954FF"
-                    android:text="Предыдущая неделя"
-                    android:textSize="12sp"/>
-
-                <Button
-                    android:id="@+id/btnCurrectWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#6200EA"
-                    android:text="Текущая неделя"
-                    android:textSize="12sp" />
-
-                <Button
-                    android:id="@+id/btnNextWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#A567FF"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="Следущая неделя"
-                    android:textSize="12sp"/>
-
-            </LinearLayout>
-
-            <!-- Дни недели -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="horizontal"
-                android:paddingBottom="12dp">
 
                 <TextView
                     android:id="@+id/dataPrevious"
@@ -100,268 +67,386 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="TextView" />
+                    android:gravity="center" />
+
+
             </LinearLayout>
 
             <LinearLayout
-
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="8dp">
 
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/btnPreviousWeek"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#8954FF"
+                    android:elevation="2dp"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="8dp"
+                    android:text="Пред. неделя"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
 
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerMonday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:id="@+id/mondayText"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Понедельник"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Сюда будут добавляться элементы уроков -->
-
-                    </LinearLayout>
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/btnCurrentWeek"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="Понедельник"
-                    app:cardCornerRadius="16dp">
+                    android:layout_weight="1"
+                    android:backgroundTint="#6200EA"
+                    android:elevation="2dp"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="8dp"
+                    android:text="Текущая"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
 
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerTuesday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Вторник"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/btnNextWeek"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="Понедельник"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerWednesday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Среда"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="Понедельник"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerThursday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Четверг"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerFriday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Пятница"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="Понедельник"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerSaturday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Суббота"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="Понедельник"
-                    app:cardCornerRadius="16dp">
-
-                    <LinearLayout
-                        android:id="@+id/scheduleContainerSunday"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="12dp">
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Воскресенье"
-                            android:textSize="16sp"
-                            android:textStyle="bold" />
-
-                        <!-- Элементы пар -->
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:orientation="vertical">
-
-
-                            <!-- Добавить аналогичные блоки для других пар -->
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                </androidx.cardview.widget.CardView>
-
-                <!-- Повторить CardView для других дней -->
+                    android:layout_weight="1"
+                    android:backgroundTint="#A567FF"
+                    android:elevation="2dp"
+                    android:paddingHorizontal="4dp"
+                    android:paddingVertical="8dp"
+                    android:text="След. неделя"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Дни недели -->
+
+        <!-- Уменьшенная версия (появляется при скролле) -->
+        <LinearLayout
+            android:id="@+id/compactWeekNavigation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:elevation="4dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="4dp"
+            android:visibility="gone">
 
             <TextView
+                android:id="@+id/compactCurrentDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="21.02.2025"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnCompactPreviousWeekI"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_chevron_left"
+
+                />
+
+            <ImageButton
+                android:id="@+id/btnCompactCurrentWeekI"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_hash" />
+
+            <ImageButton
+                android:id="@+id/btnCompactNextWeekI"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_chevron_right" />
+        </LinearLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/scrollView"
+            android:fillViewport="true">
+
+            <!-- Основной контейнер расписания -->
+            <LinearLayout
+                android:id="@+id/scheduleContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="end"
-                android:text="Обновлено: 17.02.2025 12:44"
-                android:textSize="12sp" />
-        </LinearLayout>
-    </ScrollView>
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:id="@+id/groups"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center"
+                    android:text="Расписание группы 17В11"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerMonday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:id="@+id/mondayText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Понедельник"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Сюда будут добавляться элементы уроков -->
+
+                        </LinearLayout>
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Понедельник"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerTuesday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Вторник"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Понедельник"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerWednesday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Среда"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Понедельник"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerThursday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Четверг"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerFriday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Пятница"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Понедельник"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerSaturday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Суббота"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="Понедельник"
+                        app:cardCornerRadius="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/scheduleContainerSunday"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="Воскресенье"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <!-- Элементы пар -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:orientation="vertical">
+
+
+                                <!-- Добавить аналогичные блоки для других пар -->
+                            </LinearLayout>
+
+                        </LinearLayout>
+
+                    </androidx.cardview.widget.CardView>
+
+                    <!-- Повторить CardView для других дней -->
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- Панель навигации по неделям -->
+
+    <!-- Область с расписанием -->
 </RelativeLayout>

@@ -1,227 +1,566 @@
 package com.example.mytpu;
-import static com.example.mytpu.R.id.dataPrevious;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.TextUtils;
+import android.util.DisplayMetrics;
+import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.annotation.SuppressLint;
-import android.view.View;
-import android.content.Intent;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.inputmethod.EditorInfo;
-import android.widget.Button;
-import android.widget.EditText;
+import android.widget.*;
+import android.graphics.Rect;
+import android.widget.AutoCompleteTextView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
-import android.widget.Toast;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.*;
-import android.animation.ObjectAnimator;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.view.View;
-import android.view.animation.OvershootInterpolator;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import android.animation.ObjectAnimator;
+import android.view.animation.OvershootInterpolator;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-public class ScheduleActivity extends AppCompatActivity {
 
+public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
+    private static final int DAYS_IN_WEEK = 7;
+    private static final int WEEKS_IN_YEAR = 52;
+    private static final int[] DAY_IDS = {
+            R.id.scheduleContainerMonday,
+            R.id.scheduleContainerTuesday,
+            R.id.scheduleContainerWednesday,
+            R.id.scheduleContainerThursday,
+            R.id.scheduleContainerFriday,
+            R.id.scheduleContainerSaturday,
+            R.id.scheduleContainerSunday
+    };
+    private AutoCompleteTextView searchField;
+    private ImageButton btnSearchToggle;
+
+    private boolean isLoading = false;
+    private boolean[] hasLessons = new boolean[DAYS_IN_WEEK];
+    private boolean clearData = false;
     private LinearLayout scheduleContainer;
-    private TextView dataPrevious, CurrectData, dataNext, lastUpdateTextView, compactCurrentDate;
+    private TextView dataPrevious, currentData, dataNext, compactCurrentDate;
     private OkHttpClient client;
     private ExecutorService executor;
-
-    private int currentData, currentDatam ,selectedYear,selectedWeek, height, endDayStr, startDayStr, endMStr;
+    private int selectedYear, selectedWeek;
     private String jsonDataOfSite;
-    private String startTime;
-    private boolean cWN, ClearData = false;
-    Map<String, LinearLayout> paraContainers = new HashMap<>();
+    private boolean cWN;
+    private final Map<String, LinearLayout> paraContainers = new HashMap<>();
+    private ArrayAdapter<String> searchAdapter;
+    private ArrayList<String> allGroups = new ArrayList<>();
+    private ArrayList<String> allTeachers = new ArrayList<>();
+    private String currentSearchQuery = "";
+    private TextView groupsTextView;
+    private SharedPreferences sharedPreferences;
+    private static final String PREFS_NAME = "SearchPrefs";
+    private static final String KEY_LAST_SEARCH = "last_search";
+    private static final String KEY_SEARCH_TYPE = "search_type";
+    private ProgressBar progressBar;
+    private CardView searchCard;
+    private boolean isSearchExpanded = false;
+    private int originalCardWidth;
+    private boolean isKeyboardVisible = false;
+    private final LinkedHashMap<String, List<LessonData>> groupedLessonsMap = new LinkedHashMap<>();
+    private final Object lock = new Object(); // Добавить объект для синхронизации
 
-
-
-
+    private static final int[] DAY_HEADER_IDS = {
+            R.id.day_header1, // Понедельник
+            R.id.day_header2, // Вторник
+            R.id.day_header3, // Среда
+            R.id.day_header4, // Четверг
+            R.id.day_header5, // Пятница
+            R.id.day_header6, // Суббота
+            R.id.day_header7  // Воскресенье
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_schedule);
-        ScrollView scrollView = findViewById(R.id.scrollView);
-        LinearLayout fullWeekNavigation = findViewById(R.id.fullWeekNavigation);
-        LinearLayout compactWeekNavigation = findViewById(R.id.compactWeekNavigation);
-        fullWeekNavigation.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-            @Override
-            public void onGlobalLayout() {
-                // Убираем слушатель, чтобы он сработал один раз
-                fullWeekNavigation.getViewTreeObserver().removeOnGlobalLayoutListener(this);
 
-                height = fullWeekNavigation.getHeight();
-
-                // Здесь можно использовать полученные размеры
-            }
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        groupsTextView = findViewById(R.id.groups);
+        searchAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line);
+        searchField = findViewById(R.id.searchField);
+        progressBar = findViewById(R.id.progressBar);
+        btnSearchToggle = findViewById(R.id.btnSearchToggle);
+        searchField.setAdapter(searchAdapter);
+        searchCard = findViewById(R.id.searchCard);
+        restoreLastSearch();
+        updateGroupsTextView(currentSearchQuery);
+        initViews();
+        setupScrollListener();
+        setupWeekNavigationButtons();
+        setupSearchField();
+        initHttpClient();
+        loadInitialWeek();
+        setupSearchAutocomplete();
+        updateSearchFieldBehavior();
+        // Восстановление состояния
+        if (savedInstanceState != null) {
+            jsonDataOfSite = savedInstanceState.getString("JSON_DATA");
+            currentSearchQuery = savedInstanceState.getString("CURRENT_SEARCH", "");
+            selectedWeek = savedInstanceState.getInt("SELECTED_WEEK");
+            selectedYear = savedInstanceState.getInt("SELECTED_YEAR");
+        }
+        searchCard.post(() -> {
+            originalCardWidth = searchCard.getWidth();
+            setupKeyboardListener();
         });
+        btnSearchToggle.setOnClickListener(v -> toggleSearch());
+        setupKeyboardListener();
+        // Остальная инициализация...
 
-        scrollView.setOnScrollChangeListener(new View.OnScrollChangeListener() {
-            @Override
-            public void onScrollChange(View v, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
+        if (jsonDataOfSite == null || jsonDataOfSite.isEmpty()) {
+            loadSchedule(); // Загружаем данные только если их нет
+        } else {
+            processDataInBackground(jsonDataOfSite); // Обрабатываем сохраненные данные
+        }
+    }
 
-                if (scrollY > height * 2 && !cWN) {
-                    // Скроллим вниз
-                    animateViewTransition(fullWeekNavigation, compactWeekNavigation);
-                    cWN = true;
-                }  if (scrollY < height && cWN) {
-                    // Скроллим вверх
-                    animateViewTransition(compactWeekNavigation, fullWeekNavigation);
-                    cWN = false;
+    private void toggleSearch() {
+        if (isSearchExpanded) {
+            collapseSearch();
+        } else {
+            expandSearch();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString("CURRENT_SEARCH", currentSearchQuery);
+        outState.putString("JSON_DATA", jsonDataOfSite);
+        outState.putInt("SELECTED_WEEK", selectedWeek);
+        outState.putInt("SELECTED_YEAR", selectedYear);
+        outState.putBooleanArray("HAS_LESSONS", hasLessons);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(@NonNull Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        currentSearchQuery = savedInstanceState.getString("CURRENT_SEARCH", "");
+        jsonDataOfSite = savedInstanceState.getString("JSON_DATA");
+        selectedWeek = savedInstanceState.getInt("SELECTED_WEEK");
+        selectedYear = savedInstanceState.getInt("SELECTED_YEAR");
+        hasLessons = savedInstanceState.getBooleanArray("HAS_LESSONS");
+
+        if (hasLessons == null) hasLessons = new boolean[DAYS_IN_WEEK];
+
+        // Применяем фильтр после восстановления
+        if (!currentSearchQuery.isEmpty()) {
+            applySearch(currentSearchQuery);
+        }
+    }
+
+    private void setupKeyboardListener() {
+        final View activityRootView = getWindow().getDecorView().findViewById(android.R.id.content);
+        activityRootView.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            Rect r = new Rect();
+            activityRootView.getWindowVisibleDisplayFrame(r);
+            int screenHeight = activityRootView.getRootView().getHeight();
+            int keypadHeight = screenHeight - r.bottom;
+
+            // Новый расчет видимости клавиатуры
+            boolean isKeyboardNowVisible = keypadHeight > screenHeight * 0.15;
+
+            if (isKeyboardNowVisible != isKeyboardVisible) {
+                isKeyboardVisible = isKeyboardNowVisible;
+
+                if (isKeyboardVisible) {
+                    if (!isSearchExpanded) expandSearch();
+                } else {
+                    if (isSearchExpanded) collapseSearch();
                 }
             }
         });
+    }
 
-// Метод для анимации перехода между двумя View
+    private void expandSearch() {
+        if (isSearchExpanded) return;
+        isSearchExpanded = true;
 
+        searchField.post(() -> {
+            ValueAnimator anim = ValueAnimator.ofInt(
+                    searchCard.getWidth(),
+                    getScreenWidth() - dpToPx(32)
+            );
 
-        scheduleContainer = findViewById(R.id.scheduleContainer);
-        client = new OkHttpClient();
-        executor = Executors.newSingleThreadExecutor();
+            anim.addUpdateListener(valueAnimator -> {
+                int val = (Integer) valueAnimator.getAnimatedValue();
+                ViewGroup.LayoutParams params = searchCard.getLayoutParams();
+                params.width = val;
+                searchCard.setLayoutParams(params);
+            });
 
-        // Устанавливаем текущую неделю и год
-        Calendar calendar = Calendar.getInstance();
-        selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
-        selectedYear = calendar.get(Calendar.YEAR);
-        currentData = calendar.get(Calendar.DATE);
-        currentDatam = calendar.get(Calendar.MONTH)+1;
+            anim.setDuration(300);
+            anim.start();
 
-        dataPrevious = findViewById(R.id.dataPrevious);
-        CurrectData = findViewById(R.id.CurrectData);
-        compactCurrentDate = findViewById(R.id.compactCurrentDate);
-        dataNext = findViewById(R.id.dataNext);
+            searchField.setVisibility(View.VISIBLE);
+            searchField.postDelayed(() -> showKeyboard(), 150);
+        });
+    }
 
+    private void collapseSearch() {
+        if (!isSearchExpanded) return;
+        isSearchExpanded = false;
 
-        // Настройка кнопок
-        Button btnPreviousWeek = findViewById(R.id.btnPreviousWeek);
-        Button btnCurrectWeek = findViewById(R.id.btnCurrentWeek);
-        Button btnNextWeek = findViewById(R.id.btnNextWeek);
-        @SuppressLint({"MissingInflatedId", "LocalSuppress"}) ImageButton btnPreviousWeekI = findViewById(R.id.btnCompactPreviousWeekI);
-        @SuppressLint({"MissingInflatedId", "LocalSuppress"})ImageButton btnCurrectWeekI = findViewById(R.id.btnCompactCurrentWeekI);
-        @SuppressLint({"MissingInflatedId", "LocalSuppress"})ImageButton btnNextWeekI = findViewById(R.id.btnCompactNextWeekI);
-        updateDates();
+        hideKeyboard();
 
-        EditText searchField = findViewById(R.id.searchField);
+        searchField.post(() -> {
+            ValueAnimator anim = ValueAnimator.ofInt(
+                    searchCard.getWidth(),
+                    originalCardWidth
+            );
+
+            anim.addUpdateListener(valueAnimator -> {
+                int val = (Integer) valueAnimator.getAnimatedValue();
+                ViewGroup.LayoutParams params = searchCard.getLayoutParams();
+                params.width = val;
+                searchCard.setLayoutParams(params);
+            });
+
+            anim.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    searchField.setVisibility(View.GONE);
+                    searchField.clearFocus();
+                }
+            });
+
+            anim.setDuration(300);
+            anim.start();
+        });
+    }
+
+    // Вспомогательные методы
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
+    private void showKeyboard() {
+        if (searchField.requestFocus()) {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.showSoftInput(searchField, InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
+    private void hideKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
+    }
+
+    private int getScreenWidth() {
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        return displayMetrics.widthPixels;
+    }
+
+    private void updateSearchFieldBehavior() {
+        searchField = findViewById(R.id.searchField);
         searchField.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                performSearch(searchField.getText().toString());
+                performSearch();
                 return true;
             }
             return false;
         });
-
-        btnPreviousWeekI.setOnClickListener(v -> {
-            selectedWeek--;
-            if (selectedWeek < 1) {
-                selectedWeek = 52;
-                selectedYear--;
-            }
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-        btnCurrectWeekI.setOnClickListener(v ->{
-
-            selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
-            selectedYear = calendar.get(Calendar.YEAR);
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-        btnNextWeekI.setOnClickListener(v -> {
-            selectedWeek++;
-            if (selectedWeek > 52) {
-                selectedWeek = 1;
-                selectedYear++;
-            }
-
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-
-        btnPreviousWeek.setOnClickListener(v -> {
-            selectedWeek--;
-            if (selectedWeek < 1) {
-                selectedWeek = 52;
-                selectedYear--;
-            }
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-        btnCurrectWeek.setOnClickListener(v ->{
-
-            selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
-            selectedYear = calendar.get(Calendar.YEAR);
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-        btnNextWeek.setOnClickListener(v -> {
-            selectedWeek++;
-            if (selectedWeek > 52) {
-                selectedWeek = 1;
-                selectedYear++;
-            }
-
-            ClearData = true;
-            updateDates();
-            parseSchedule(jsonDataOfSite);
-        });
-
-        // Загружаем расписание
-        loadSchedule();
+        searchField.setMaxLines(1);
+        searchField.setSingleLine(true);
     }
 
-    private void performSearch(String string) {
+    private void setupSearchAutocomplete() {
+        searchField = findViewById(R.id.searchField);
+        searchField.setThreshold(1);
+        searchField.setAdapter(searchAdapter);
+
+        searchField.setOnItemClickListener((parent, view, position, id) -> {
+            String selectedItem = (String) parent.getItemAtPosition(position);
+            applySearch(selectedItem);
+            Log.d(TAG, "Выбрано из списка: " + selectedItem);
+
+            // Скрываем клавиатуру
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
+        });
+
+        searchField.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                Log.d(TAG, "Поле поиска получило фокус");
+                if (allGroups.isEmpty() && allTeachers.isEmpty()) {
+                    loadSchedule();
+                } else {
+                    updateSearchAdapter();
+                }
+            }
+        });
     }
 
-    private void animateJellyEffect(View view) {
-        view.setScaleX(0.8f);
-        view.setScaleY(0.8f);
-        view.setAlpha(0f);
+    private void applySearch(String query) {
+        currentSearchQuery = query.trim().toLowerCase();
+        saveSearchState(query);
+        updateGroupsTextView(query);
 
-        view.animate()
-                .scaleX(1f)
-                .scaleY(1f)
-                .alpha(1f)
-                .setDuration(500) // Длительность анимации
-                .setInterpolator(new OvershootInterpolator(1.5f)) // Эффект "желе"
-                .start();
+        runOnUiThread(() -> {
+            clearScheduleContainers();
+            paraContainers.clear();
+        });
+
+        if (jsonDataOfSite != null && !jsonDataOfSite.isEmpty()) {
+            parseSchedule(jsonDataOfSite);
+        }
     }
 
-    // Модифицируем метод animateViewTransition
+    private void updateGroupsTextView(String query) {
+        runOnUiThread(() -> {
+            if (query == null || query.isEmpty()) {
+                groupsTextView.setVisibility(View.GONE);
+                return;
+            }
+
+            String displayText = "";
+            // Проверяем группы без учета регистра
+            boolean isGroup = false;
+            for (String group : allGroups) {
+                if (group.equalsIgnoreCase(query)) {
+                    isGroup = true;
+                    break;
+                }
+            }
+
+            if (isGroup) {
+                displayText = "Расписание для группы: " + query;
+            } else if (allTeachers.contains(query.toLowerCase())) {
+                displayText = "Расписание преподавателя: " + query;
+            }
+
+            groupsTextView.setText(displayText);
+            groupsTextView.setVisibility(TextUtils.isEmpty(displayText) ? View.GONE : View.VISIBLE);
+        });
+    }
+
+    private void restoreLastSearch() {
+        String lastSearch = sharedPreferences.getString(KEY_LAST_SEARCH, "");
+        if (!lastSearch.isEmpty()) {
+            currentSearchQuery = lastSearch.toLowerCase();
+            searchField.setText(lastSearch);
+            updateGroupsTextView(lastSearch);
+            // Добавить задержку для завершения инициализации
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (jsonDataOfSite != null) {
+                    parseSchedule(jsonDataOfSite);
+                }
+            }, 500);
+        }
+    }
+
+    private void saveSearchState(String query) {
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(KEY_LAST_SEARCH, query);
+        String type = allGroups.contains(query) ? "group" :
+                allTeachers.contains(query) ? "teacher" : "";
+        editor.putString(KEY_SEARCH_TYPE, type);
+        editor.apply();
+    }
+
+    private void collectSearchData(JSONArray faculties) throws JSONException {
+        Set<String> uniqueGroups = new HashSet<>();
+        Set<String> uniqueTeachers = new HashSet<>();
+
+        for (int i = 0; i < faculties.length(); i++) {
+            JSONObject faculty = faculties.getJSONObject(i);
+            JSONArray groups = faculty.getJSONArray("groups");
+
+            for (int j = 0; j < groups.length(); j++) {
+                JSONObject group = groups.getJSONObject(j);
+                String groupName = group.getString("name").trim().toLowerCase();
+                uniqueGroups.add(groupName);
+
+                JSONArray lessons = group.getJSONArray("lessons");
+                for (int k = 0; k < lessons.length(); k++) {
+                    JSONObject lesson = lessons.getJSONObject(k);
+                    JSONArray teachers = lesson.optJSONArray("teachers");
+
+                    if (teachers != null) {
+                        for (int t = 0; t < teachers.length(); t++) {
+                            String teacher = teachers.getJSONObject(t)
+                                    .getString("name")
+                                    .trim()
+                                    .toLowerCase();
+                            uniqueTeachers.add(teacher);
+                        }
+                    }
+                }
+            }
+        }
+
+        allGroups.clear();
+        allGroups.addAll(uniqueGroups);
+        Collections.sort(allGroups);
+
+        allTeachers.clear();
+        allTeachers.addAll(uniqueTeachers);
+        Collections.sort(allTeachers);
+    }
+
+    private void updateSearchAdapter() {
+        if (searchAdapter == null) return;
+
+        runOnUiThread(() -> {
+            List<String> suggestions = new ArrayList<>();
+
+            // Добавляем группы
+            for (String group : allGroups) {
+                if (group.toLowerCase().contains(currentSearchQuery.toLowerCase())) {
+                    suggestions.add(group);
+                }
+            }
+
+            // Добавляем преподавателей
+            for (String teacher : allTeachers) {
+                if (teacher.toLowerCase().contains(currentSearchQuery.toLowerCase())) {
+                    suggestions.add(teacher);
+                }
+            }
+
+            // Сортируем и обновляем адаптер
+            Collections.sort(suggestions);
+            suggestions.addAll(allGroups);
+            suggestions.addAll(allTeachers);
+            searchAdapter.clear();
+            searchAdapter.addAll(suggestions);
+            searchAdapter.notifyDataSetChanged();
+
+            Log.d(TAG, "Обновление адаптера. Найдено совпадений: " + suggestions.size());
+        });
+    }
+
+    private void initViews() {
+        scheduleContainer = findViewById(R.id.scheduleContainer);
+        dataPrevious = findViewById(R.id.dataPrevious);
+        currentData = findViewById(R.id.CurrectData);
+        compactCurrentDate = findViewById(R.id.compactCurrentDate);
+        dataNext = findViewById(R.id.dataNext);
+    }
+
+    private void setupScrollListener() {
+        ScrollView scrollView = findViewById(R.id.scrollView);
+        LinearLayout fullWeekNavigation = findViewById(R.id.fullWeekNavigation);
+        LinearLayout compactWeekNavigation = findViewById(R.id.compactWeekNavigation);
+
+        fullWeekNavigation.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                fullWeekNavigation.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                int height = fullWeekNavigation.getHeight();
+
+                scrollView.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+                    if (scrollY > height * 2 && !cWN) {
+                        animateViewTransition(fullWeekNavigation, compactWeekNavigation);
+                        cWN = true;
+                    } else if (scrollY < height && cWN) {
+                        animateViewTransition(compactWeekNavigation, fullWeekNavigation);
+                        cWN = false;
+                    }
+                });
+            }
+        });
+    }
+
+    private void setupWeekNavigationButtons() {
+        setupWeekButton(R.id.btnPreviousWeek, R.id.btnCompactPreviousWeekI, -1);
+        setupWeekButton(R.id.btnCurrentWeek, R.id.btnCompactCurrentWeekI, 0);
+        setupWeekButton(R.id.btnNextWeek, R.id.btnCompactNextWeekI, 1);
+    }
+
+    private void setupWeekButton(int regularButtonId, int compactButtonId, int weekDelta) {
+        View.OnClickListener listener = v -> {
+            if (weekDelta != 0) {
+                selectedWeek += weekDelta;
+                adjustWeekBounds();
+            } else {
+                Calendar calendar = Calendar.getInstance();
+                selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
+                selectedYear = calendar.get(Calendar.YEAR);
+            }
+            clearData = true;
+            updateDates();
+            updateDayDates(); // Добавить вызов здесь
+            if (jsonDataOfSite != null) {
+                parseSchedule(jsonDataOfSite);
+            }
+        };
+        findViewById(regularButtonId).setOnClickListener(listener);
+        ((ImageButton) findViewById(compactButtonId)).setOnClickListener(listener);
+    }
+
+    private void adjustWeekBounds() {
+        if (selectedWeek < 1) {
+            selectedWeek = WEEKS_IN_YEAR;
+            selectedYear--;
+        } else if (selectedWeek > WEEKS_IN_YEAR) {
+            selectedWeek = 1;
+            selectedYear++;
+        }
+    }
+
+    private void setupSearchField() {
+        //loadSchedule();
+        EditText searchField = findViewById(R.id.searchField);
+        searchField.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch();
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void initHttpClient() {
+        client = new OkHttpClient();
+        executor = Executors.newSingleThreadExecutor();
+    }
+
+    private void loadInitialWeek() {
+        Calendar calendar = Calendar.getInstance();
+        selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
+        selectedYear = calendar.get(Calendar.YEAR);
+        updateDates();
+    }
+
     private void animateViewTransition(View viewToHide, View viewToShow) {
-        // Анимация для скрытия viewToHide
         ObjectAnimator hideAnimator = ObjectAnimator.ofFloat(viewToHide, "alpha", 1f, 0f);
-        hideAnimator.setDuration(300); // Длительность анимации
+        hideAnimator.setDuration(300);
         hideAnimator.start();
 
-        // Анимация для показа viewToShow
-        animateJellyEffect(viewToShow); // Применяем "желеобразную" анимацию
+        animateJellyEffect(viewToShow);
 
-        // Устанавливаем видимость после завершения анимации
         hideAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
@@ -231,358 +570,522 @@ public class ScheduleActivity extends AppCompatActivity {
         });
     }
 
+    private void animateJellyEffect(View view) {
+        view.animate()
+                .scaleX(1f).scaleY(1f).alpha(1f)
+                .setDuration(500)
+                .setInterpolator(new OvershootInterpolator(1.5f))
+                .start();
+    }
+
     private void loadSchedule() {
-         // Очищаем контейнер перед загрузкой новых данных
+        showLoading(true);
         executor.execute(() -> {
-            try {
-                Request request = new Request.Builder()
-                        .url(API_URL)
-                        .build();
+            try (Response response = client.newCall(new Request.Builder()
+                    .url(API_URL)
+                    .build()).execute()) {
 
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        showError("Ошибка загрузки: " + response.code());
-                        return;
-                    }
-
-                    jsonDataOfSite = response.body().string();
-                    parseSchedule(jsonDataOfSite);
+                if (!response.isSuccessful()) {
+                    runOnUiThread(() -> showError("Ошибка загрузки: " + response.code()));
+                    return;
                 }
+
+                jsonDataOfSite = response.body().string();
+
+                // Обрабатываем данные и обновляем поисковые подсказки
+                processDataInBackground(jsonDataOfSite);
+                runOnUiThread(() -> {
+                    updateGroupsTextView(currentSearchQuery); // Обновляем после загрузки
+                    updateSearchAdapter();
+                });
+
             } catch (IOException e) {
-                showError("Ошибка подключения: " + e.getMessage());
+                runOnUiThread(() -> showError("Ошибка подключения: " + e.getMessage()));
+            } finally {
+                runOnUiThread(() -> showLoading(false));
             }
         });
     }
 
-    // Функция для конвертации номера дня недели в название
-    private String getDayName(int weekday) {
-        String[] days = {"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"};
-        return (weekday >= 0 && weekday < days.length) ? days[weekday] : "Неизвестный день";
+    private void processDataInBackground(String jsonData) {
+        executor.execute(() -> {
+            try {
+                JSONObject root = new JSONObject(jsonData);
+                JSONArray faculties = root.optJSONArray("faculties");
+
+                // Всегда вызываем collectSearchData, даже если faculties null
+                collectSearchData(faculties != null ? faculties : new JSONArray());
+
+                // Обновляем адаптер в UI потоке после сбора данных
+                runOnUiThread(() -> {
+                    updateSearchAdapter();
+                    updateGroupsTextView(currentSearchQuery);
+                    Log.d(TAG, "Адаптер обновлен. Элементов: " + searchAdapter.getCount());
+                });
+
+                // Парсим расписание только если есть поисковый запрос
+                if (!currentSearchQuery.isEmpty()) {
+                    parseSchedule(jsonData);
+                }
+
+            } catch (JSONException e) {
+                Log.e(TAG, "JSON Error: ", e);
+                runOnUiThread(() -> showError("Ошибка данных: " + e.getMessage()));
+            }
+        });
+    }
+
+    private void showLoading(boolean show) {
+        runOnUiThread(() -> {
+            isLoading = show;
+            if (progressBar != null) {
+                progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+        });
+    }
+
+    private void updateDayVisibility() {
+        runOnUiThread(() -> {
+            Calendar calendar = Calendar.getInstance();
+            int currentDay = (calendar.get(Calendar.DAY_OF_WEEK) - 2);
+            if (currentDay < 0) currentDay = 6;
+
+            for (int i = 0; i < DAY_IDS.length; i++) {
+                LinearLayout dayContainer = findViewById(DAY_IDS[i]);
+                if (dayContainer != null) {
+                    // Проверяем наличие уроков
+                    boolean hasLessonsInDay = false;
+                    for (int j = 0; j < dayContainer.getChildCount(); j++) {
+                        View child = dayContainer.getChildAt(j);
+                        if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
+                            hasLessonsInDay = true;
+                            break;
+                        }
+                    }
+                    hasLessons[i] = hasLessonsInDay;
+
+                    // Обновляем видимость родительского CardView
+                    ViewParent parent = dayContainer.getParent();
+                    if (parent instanceof CardView) {
+                        CardView dayCard = (CardView) parent;
+                        dayCard.setVisibility(hasLessonsInDay ? View.VISIBLE : View.GONE);
+
+                        // Обновляем стиль для текущего дня
+                        boolean isToday = (i == currentDay) && isCurrentWeek();
+                        dayCard.setCardElevation(isToday ? 8f : 2f);
+                        dayCard.setBackgroundResource(isToday ? R.drawable.border : R.drawable.card);
+                    }
+                }
+            }
+        });
+    }
+
+    @SuppressLint("DefaultLocale")
+    private void parseSchedule(String jsonData) {
+        new Thread(() -> {
+            try {
+                JSONObject root = new JSONObject(jsonData);
+                JSONArray faculties = root.optJSONArray("faculties");
+
+                runOnUiThread(() -> {
+                    if (clearData) {
+                        clearScheduleContainers();
+                        clearData = false;
+                    }
+                });
+
+                if (faculties != null) {
+                    synchronized (lock) { // Синхронизация доступа к коллекции
+                        groupedLessonsMap.clear();
+                    }
+                    Arrays.fill(hasLessons, false);
+
+                    for (int i = 0; i < faculties.length(); i++) {
+                        JSONObject faculty = faculties.optJSONObject(i);
+                        JSONArray groups = faculty != null ? faculty.optJSONArray("groups") : null;
+                        if (groups == null) continue;
+
+                        for (int j = 0; j < groups.length(); j++) {
+                            JSONObject group = groups.optJSONObject(j);
+                            if (group == null) continue;
+
+                            processGroup(group);
+                        }
+                    }
+
+                    runOnUiThread(() -> {
+                        // Создаем отсортированный список ключей
+                        List<String> sortedKeys = new ArrayList<>(groupedLessonsMap.keySet());
+                        Collections.sort(sortedKeys, (k1, k2) -> {
+                            String[] parts1 = k1.split("\\|");
+                            String[] parts2 = k2.split("\\|");
+                            int dayCompare = Integer.compare(Integer.parseInt(parts1[0]), Integer.parseInt(parts2[0]));
+                            if (dayCompare != 0) return dayCompare;
+                            return parts1[1].compareTo(parts2[1]);
+                        });
+
+                        // Добавляем элементы в отсортированном порядке
+                        for (String key : sortedKeys) {
+                            addGroupedLessonsToUI(groupedLessonsMap.get(key));
+                        }
+                        updateDayVisibility();
+                        updateDayDates();
+                    });
+                }
+            } catch (JSONException e) {
+                runOnUiThread(() -> showError("Ошибка разбора данных: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    private void addGroupedLessonsToUI(List<LessonData> lessons) {
+        if (lessons.isEmpty()) return;
+        // Сортируем уроки по времени начала
+        Collections.sort(lessons, (l1, l2) -> {
+            String time1 = l1.time.split(" - ")[0];
+            String time2 = l2.time.split(" - ")[0];
+            return time1.compareTo(time2);
+        });
+        runOnUiThread(() -> {
+            LessonData firstLesson = lessons.get(0);
+            LinearLayout container = getDayContainer(firstLesson.weekday);
+            if (container == null) return;
+
+            String uniqueKey = firstLesson.weekday + "|" + firstLesson.time;
+
+            if (!paraContainers.containsKey(uniqueKey)) {
+                CardView paraCard = createParaCard(firstLesson.time);
+                paraCard.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                ));
+                container.addView(paraCard);
+                LinearLayout lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
+                paraContainers.put(uniqueKey, lessonContainer);
+
+                for (LessonData lesson : lessons) {
+                    View lessonView = createLessonCard(
+                            lesson.subgroups > 0 ? "Подгруппа: " + lesson.subgroups : "",
+                            lesson.subject,
+                            lesson.time,
+                            lesson.audience,
+                            lesson.type,
+                            lesson.teacher
+                    );
+                    lessonView.setLayoutParams(new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                    ));
+                    lessonContainer.addView(lessonView);
+                }
+            }
+        });
+    }
+
+    private void updateDayDates() {
+        SimpleDateFormat sdf = new SimpleDateFormat("d MMMM", new Locale("ru")); // Формат: "21 мая"
+        Calendar cal = Calendar.getInstance();
+        cal.setFirstDayOfWeek(Calendar.MONDAY);
+        cal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+        cal.set(Calendar.YEAR, selectedYear);
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
+
+        for (int i = 0; i < DAY_HEADER_IDS.length; i++) {
+            TextView dateHeader = findViewById(DAY_HEADER_IDS[i]);
+            if (dateHeader != null) {
+                String dateString = sdf.format(cal.getTime());
+                dateHeader.setText(dateString);
+                cal.add(Calendar.DAY_OF_MONTH, 1);
+            }
+        }
+    }
+
+    private void clearScheduleContainers() {
+        runOnUiThread(() -> {
+            for (int i = 1; i <= DAYS_IN_WEEK; i++) {
+                LinearLayout container = getDayContainer(i);
+                if (container != null) {
+                    // Удаляем только уроки
+                    for (int j = container.getChildCount() - 1; j >= 0; j--) {
+                        View child = container.getChildAt(j);
+                        if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
+                            container.removeViewAt(j);
+                        }
+                    }
+                }
+            }
+            paraContainers.clear();
+            updateDayVisibility(); // Обновляем видимость
+        });
+    }
+
+    private void processGroup(JSONObject group) throws JSONException {
+        String groupName = group.optString("name", "").trim();
+        boolean isGroupMatch = groupName.equalsIgnoreCase(currentSearchQuery);
+
+        JSONArray lessons = group.getJSONArray("lessons");
+        for (int k = 0; k < lessons.length(); k++) {
+            JSONObject lesson = lessons.getJSONObject(k);
+
+            if (isGroupMatch || checkTeacherInLesson(lesson)) {
+                LessonData lessonData = processLesson(lesson);
+                if (lessonData != null) {
+                    String key = lessonData.weekday + "|" + lessonData.time;
+                    if (!groupedLessonsMap.containsKey(key)) {
+                        groupedLessonsMap.put(key, new ArrayList<>());
+                    }
+                    groupedLessonsMap.get(key).add(lessonData);
+                }
+            }
+        }
+    }
+
+    private boolean checkTeacherInLesson(JSONObject lesson) throws JSONException {
+        if (currentSearchQuery.isEmpty()) return false;
+
+        JSONArray teachers = lesson.optJSONArray("teachers");
+        if (teachers == null) return false;
+
+        String query = currentSearchQuery.toLowerCase().trim();
+
+        for (int t = 0; t < teachers.length(); t++) {
+            JSONObject teacher = teachers.getJSONObject(t);
+            String teacherName = teacher.getString("name")
+                    .toLowerCase()
+                    .trim();
+
+            if (teacherName.contains(query)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private LessonData processLesson(JSONObject lesson) throws JSONException {
+        JSONObject dateObj = lesson.optJSONObject("date");
+        if (dateObj == null) return null;
+
+        String startDateStr = dateObj.optString("start", "");
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+            Date startDate = sdf.parse(startDateStr);
+            if (startDate == null) return null;
+
+            Calendar lessonCalendar = Calendar.getInstance();
+            lessonCalendar.setTime(startDate);
+
+            Calendar selectedCalendar = Calendar.getInstance();
+            selectedCalendar.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+            selectedCalendar.set(Calendar.YEAR, selectedYear);
+
+            if (lessonCalendar.get(Calendar.WEEK_OF_YEAR) != selectedCalendar.get(Calendar.WEEK_OF_YEAR) ||
+                    lessonCalendar.get(Calendar.YEAR) != selectedCalendar.get(Calendar.YEAR)) {
+                return null;
+            }
+
+            int weekday = dateObj.optInt("weekday", -1);
+            if (weekday < 1 || weekday > DAYS_IN_WEEK) return null;
+
+            JSONObject time = lesson.optJSONObject("time");
+            String timeText = (time != null ? time.optString("start", "00:00") : "00:00") + " - " +
+                    (time != null ? time.optString("end", "00:00") : "00:00");
+
+            return new LessonData(
+                    lesson.optString("subject", "Неизвестный предмет"),
+                    lesson.optString("type", "Неизвестный тип"),
+                    lesson.optInt("subgroups", 0),
+                    timeText,
+                    getAudience(lesson.optJSONArray("audiences")),
+                    getTeacher(lesson.optJSONArray("teachers")),
+                    weekday
+            );
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    private String getAudience(JSONArray audiences) {
+        if (audiences == null || audiences.length() == 0) return "Неизвестная";
+        JSONObject audienceObj = audiences.optJSONObject(0);
+        return audienceObj != null ? audienceObj.optString("name", "Неизвестная") : "Неизвестная";
+    }
+
+    private String getTeacher(JSONArray teachers) {
+        if (teachers == null || teachers.length() == 0) return "Неизвестный";
+        JSONObject teacherObj = teachers.optJSONObject(0);
+        return teacherObj != null ? teacherObj.optString("name", "Неизвестный") : "Неизвестный";
+    }
+
+    private void addLessonToUI(LessonData data) {
+        runOnUiThread(() -> {
+            LinearLayout container = getDayContainer(data.weekday);
+            if (container == null) return;
+
+            // Уникальный ключ урока
+            String uniqueKey = data.weekday + "|" +
+                    data.time + "|" +
+                    data.subject.toLowerCase() + "|" +
+                    data.teacher.toLowerCase();
+
+            if (!paraContainers.containsKey(uniqueKey)) {
+                CardView paraCard = createParaCard(data.time);
+                paraCard.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                ));
+                container.addView(paraCard);
+                LinearLayout lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
+                paraContainers.put(uniqueKey, lessonContainer);
+
+                View lessonView = createLessonCard(
+                        data.subgroups > 0 ? "Подгруппа: " + data.subgroups : "",
+                        data.subject,
+                        data.time,
+                        data.audience,
+                        data.type,
+                        data.teacher
+                );
+                lessonView.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                ));
+                lessonContainer.addView(lessonView);
+            }
+        });
+    }
+
+    private CardView createParaCard(String time) {
+        CardView card = (CardView) LayoutInflater.from(this).inflate(R.layout.para_card_template, null);
+        ((TextView) card.findViewById(R.id.para)).setText(determineParaNumber(time) + " пара");
+        card.setTag("dynamicParaCard"); // Убедитесь, что тег установлен
+        return card;
+    }
+
+    private CardView createLessonCard(String subgroups, String subject, String time,
+                                      String audience, String type, String teacher) {
+        CardView card = (CardView) LayoutInflater.from(this).inflate(R.layout.lesson_card_template, null);
+        ((TextView) card.findViewById(R.id.para)).setText(subgroups);
+        ((TextView) card.findViewById(R.id.subject)).setText(subject);
+        ((TextView) card.findViewById(R.id.time)).setText(time);
+        ((TextView) card.findViewById(R.id.audiences)).setText(audience);
+        ((TextView) card.findViewById(R.id.lessonType)).setText(type);
+        ((TextView) card.findViewById(R.id.teachers)).setText(teacher);
+        return card;
+    }
+
+    private LinearLayout getDayContainer(int weekday) {
+        int id = DAY_IDS[weekday - 1];
+        LinearLayout container = findViewById(id);
+        if (container == null) {
+            Log.e("GetDayContainer", "Container for day " + weekday + " not found (ID: " + id + ")");
+        }
+        return container;
+    }
+
+
+    private boolean isCurrentWeek() {
+        Calendar now = Calendar.getInstance();
+        Calendar selected = Calendar.getInstance();
+        selected.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+        selected.set(Calendar.YEAR, selectedYear);
+
+        return now.get(Calendar.WEEK_OF_YEAR) == selected.get(Calendar.WEEK_OF_YEAR)
+                && now.get(Calendar.YEAR) == selected.get(Calendar.YEAR);
+    }
+
+
+
+    private void updateDates() {
+        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+        cal.set(Calendar.YEAR, selectedYear);
+
+        currentData.setText(sdf.format(cal.getTime()));
+        compactCurrentDate.setText(currentData.getText());
+
+        cal.add(Calendar.WEEK_OF_YEAR, -1);
+        dataPrevious.setText(sdf.format(cal.getTime()));
+
+        cal.add(Calendar.WEEK_OF_YEAR, 2);
+        dataNext.setText(sdf.format(cal.getTime()));
     }
 
     private String determineParaNumber(String time) {
-        if (time.contains("08:30") || time.contains("10:05")) {
-            return "1";
-        } else if (time.contains("10:20") || time.contains("11:55")) {
-            return "2";
-        } else if (time.contains("12:45") || time.contains("14:20")) {
-            return "3";
-        } else if (time.contains("14:35") || time.contains("16:05")) {
-            return "4";
-        } else if (time.contains("16:20") || time.contains("17:75")) {
-            return "5";
-        } else {
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
+            Date startTime = sdf.parse(time.split(" - ")[0]);
+
+            if (startTime.before(sdf.parse("10:05"))) return "1";
+            if (startTime.before(sdf.parse("11:55"))) return "2";
+            if (startTime.before(sdf.parse("14:20"))) return "3";
+            if (startTime.before(sdf.parse("16:05"))) return "4";
+            if (startTime.before(sdf.parse("17:50"))) return "5";
             return "6";
+        } catch (ParseException e) {
+            return "?";
         }
     }
 
-    private boolean[] hasLessons = new boolean[7]; // Индекс 0 - понедельник, 6 - воскресенье
+    private void performSearch() {
+        searchField = findViewById(R.id.searchField);
+        String query = searchField.getText().toString().trim();
+        Log.d(TAG, "Выполнение поиска: " + query);
+        currentSearchQuery = query.toLowerCase();
 
-    private void parseSchedule(String jsonData) {
+        // Если данные еще не загружены - загружаем
+        if ((jsonDataOfSite == null || jsonDataOfSite.isEmpty()) && !isLoading) {
+            loadSchedule();
+        }
+        // Если данные уже загружены - фильтруем
+        else if (jsonDataOfSite != null) {
+            runOnUiThread(() -> {
+                clearScheduleContainers();
+                paraContainers.clear();
+                parseSchedule(jsonDataOfSite);
+            });
+        }
+
         runOnUiThread(() -> {
-            try {
-                Arrays.fill(hasLessons, false);
-                JSONObject root = new JSONObject(jsonData);
-                JSONArray faculties = root.optJSONArray("faculties");
-                if (faculties == null) return;
-
-                SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
-                if (ClearData) {
-                    for (int kkk = 1; kkk <= 6; kkk++) {
-                        String containerIdkkk = "scheduleContainer" + getDayId(kkk);
-                        LinearLayout containerkkk = findViewById(getResources().getIdentifier(containerIdkkk, "id", getPackageName()));
-                        if (containerkkk == null) continue;
-
-                        // Удаляем только динамические CardView с тегом
-                        for (int i = containerkkk.getChildCount() - 1; i >= 0; i--) {
-                            View child = containerkkk.getChildAt(i);
-                            if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
-                                containerkkk.removeViewAt(i);
-                            }
-                        }
-
-                        Log.d("ClearData", "Cleared day " + kkk);
-                    }
-
-                    paraContainers.clear();
-                    ClearData = false;
-                }
-
-                // Обработка JSON...
-                for (int i = 0; i < faculties.length(); i++) {
-                    JSONObject faculty = faculties.optJSONObject(i);
-                    if (faculty == null) continue;
-
-                    JSONArray groups = faculty.optJSONArray("groups");
-                    if (groups == null) continue;
-
-                    for (int j = 0; j < groups.length(); j++) {
-                        JSONObject group = groups.optJSONObject(j);
-                        if (group == null) continue;
-
-                        String groupName = group.optString("name", "");
-                        if (!"17В11".equals(groupName)) continue;
-
-                        JSONArray lessons = group.optJSONArray("lessons");
-                        if (lessons == null) continue;
-
-                        for (int k = 0; k < lessons.length(); k++) {
-                            JSONObject lesson = lessons.optJSONObject(k);
-                            if (lesson == null) continue;
-
-                            JSONObject dateObj = lesson.optJSONObject("date");
-                            if (dateObj == null) continue;
-
-                            int weekday = dateObj.optInt("weekday", -1);
-                            String startDateStr = dateObj.optString("start", "");
-                            String endDateStr = dateObj.optString("end", "");
-                            try {
-                                Date startDate = sdf.parse(startDateStr);
-                                if (startDate == null) continue;
-
-                                Calendar lessonCalendar = Calendar.getInstance();
-                                lessonCalendar.setTime(startDate);
-                                int lessonWeek = lessonCalendar.get(Calendar.WEEK_OF_YEAR);
-                                int lessonYear = lessonCalendar.get(Calendar.YEAR);
-
-                                // Фильтрация по выбранной неделе и году
-                                if (lessonWeek != selectedWeek || lessonYear != selectedYear) {
-                                    continue;
-                                }
-                            } catch (ParseException e) {
-                                continue;
-                            }
-
-                            String subject = lesson.optString("subject", "Неизвестный предмет");
-                            String lessonType = lesson.optString("type", "Неизвестный тип");
-                            int subgroups = lesson.optInt("subgroups", 0);
-
-                            JSONObject time = lesson.optJSONObject("time");
-                            startTime = (time != null) ? time.optString("start", "00:00") : "00:00";
-                            String endTime = (time != null) ? time.optString("end", "00:00") : "00:00";
-
-                            String dayOfWeek = getDayName(weekday);
-                            if ("Неизвестный день".equals(dayOfWeek)) continue;
-
-                            JSONArray audiences = lesson.optJSONArray("audiences");
-                            JSONArray teachers = lesson.optJSONArray("teachers");
-
-                            String audience = "Неизвестная";
-                            if (audiences != null && audiences.length() > 0) {
-                                JSONObject audienceObj = audiences.optJSONObject(0);
-                                if (audienceObj != null) audience = audienceObj.optString("name", "Неизвестная");
-                            }
-
-// Обработка преподавателя
-                            String teacher = "Неизвестный";
-                            if (teachers != null && teachers.length() > 0) {
-                                JSONObject teacherObj = teachers.optJSONObject(0);
-                                if (teacherObj != null) teacher = teacherObj.optString("name", "Неизвестный");
-                            }
-                            String subgroupsTpue;
-                            if (subject != "Неизвестный предмет" || subject != null) {
-                                hasLessons[weekday-1] = true;
-                            }
-                            // Форматирование времени
-                            String timeText = startTime + " - " + endTime;
-                            if (subgroups != 0) {
-                                subgroupsTpue = "Подгруппа: "+subgroups;
-                            } else subgroupsTpue ="";
-                            // Вызываем метод с отдельными параметрами
-                            addLessonToUI(subject, lessonType, subgroupsTpue, timeText, audience, teacher, weekday);
-                            Log.d(TAG, "subject: "+subject+" lessonType: "+ lessonType+" subgroupsTpue: "+ subgroupsTpue+" timeText: "+ timeText+" audience: "+
-                                    audience+" teacher: "+ teacher+" weekday: "+ weekday );
-                            endDayStr = Integer.parseInt(endDateStr.split("\\.")[0]);
-                            startDayStr = Integer.parseInt(startDateStr.split("\\.")[0]);
-                            endMStr = Integer.parseInt(endDateStr.split("\\.")[1]);
-                        }
-                    }
-                }
-                updateDayVisibility(endDayStr, startDayStr, endMStr);
-            } catch (JSONException e) {
-                showError("Ошибка разбора данных: " + e.getMessage());
-            }
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
         });
-    }
-
-    private void updateDayVisibility(int endDayStr, int startDayStr, int endMStr) {
-        // Получаем текущий день недели (1 - воскресенье, 2 - понедельник, ..., 7 - суббота)
-        Calendar calendar = Calendar.getInstance();
-        int currentDay = calendar.get(Calendar.DAY_OF_WEEK);
-        Log.d("currentData" , "currentData: " + currentData);
-        // Приводим к нужному формату (в твоем коде: 1 - понедельник, ..., 6 - суббота)
-        int adjustedDay = currentDay - 1;
-        if (adjustedDay == 0) adjustedDay = 7; // Воскресенье
-        int[] dayIds = {
-                R.id.scheduleContainerMonday,
-                R.id.scheduleContainerTuesday,
-                R.id.scheduleContainerWednesday,
-                R.id.scheduleContainerThursday,
-                R.id.scheduleContainerFriday,
-                R.id.scheduleContainerSaturday,
-                R.id.scheduleContainerSunday
-        };
-
-
-
-        for (int i = 0; i < dayIds.length; i++) {
-
-            // Находим LinearLayout для дня
-            LinearLayout dayContainer = findViewById(dayIds[i]);
-            if (dayContainer != null) {
-                // Находим родительский CardView
-                CardView dayCard = (CardView) dayContainer.getParent();
-                if (dayCard != null) {
-                    // Обновляем видимость CardView
-                    dayCard.setVisibility(hasLessons[i] ? View.VISIBLE : View.GONE);
-                    Log.d("ScheduleActivity", "Day " + i + " has lessons: " + hasLessons[i]);
-                    Log.d("ScheduleActivity", "Day " + i + " visibility: " + (hasLessons[i] ? "VISIBLE" : "GONE"));
-                    dayCard.setCardElevation(2f);
-                    dayCard.setBackgroundResource(R.drawable.card);
-                }
-            }
-        }
-
-
-
-        Log.d("updateDayVisibility", "currentData: "+ currentData+ " endDayStr: "+endDayStr+" startDayStr: "+ startDayStr+" currentDatam: "+ currentDatam+" endMStr: "+ endMStr);
-        if (adjustedDay >= 1 && adjustedDay <= 7) {
-            LinearLayout todayContainer = findViewById(dayIds[adjustedDay - 1]);
-            if (todayContainer != null) {
-                CardView todayCard = (CardView) todayContainer.getParent();
-                if (todayCard != null) {
-                    if (currentData <= endDayStr && currentData >= startDayStr && endMStr == currentDatam) {
-
-                    todayCard.setCardElevation(8f); // Увеличиваем "поднятие" для выделенного дня
-                    todayCard.setBackgroundResource(R.drawable.border); // Устанавливаем рамку
-                    }
-                }
-            }
-        }
-
-    }
-    // Метод для добавления пары в UI
-    private void addLessonToUI(String subject, String type, String subgroups, String time, String audience, String teacher, int weekday) {
-        // Находим контейнер по дню недели
-        String containerId = "scheduleContainer" + getDayId(weekday);
-        LinearLayout container = findViewById(getResources().getIdentifier(containerId, "id", getPackageName()));
-        if (container == null) return;
-        // Формируем уникальный ключ для хранения контейнера пары
-        String key = weekday + "_" + time;
-
-        // Ищем lessonContainer только в рамках этого дня и времени
-        LinearLayout lessonContainer = paraContainers.get(key);
-
-        // Если не существует, создаем новый CardView для пары
-        if (lessonContainer == null) {
-            // Создаем новую CardView для пары (на основе XML-разметки)
-            CardView paraCard = (CardView) LayoutInflater.from(this)
-                    .inflate(R.layout.para_card_template, container, false);
-            paraCard.setTag("dynamicParaCard"); // Добавляем тег
-
-            // Находим контейнер для уроков внутри этой пары
-            lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
-
-            // Устанавливаем текст номера пары
-            TextView paraText = paraCard.findViewById(R.id.para);
-            paraText.setText(determineParaNumber(time) + " пара");
-
-            // Добавляем новую CardView для пары в контейнер
-            container.addView(paraCard);
-
-            // Сохраняем ссылку на контейнер для этого времени
-            paraContainers.put(key, lessonContainer);
-        }
-
-// Создаем новую CardView для урока (на основе XML-разметки)
-        CardView lessonCard = (CardView) LayoutInflater.from(this)
-                .inflate(R.layout.lesson_card_template, lessonContainer, false);
-
-// Устанавливаем тег для идентификации
-        lessonCard.setTag("lessonCard");
-
-        // Заполняем данные
-        TextView subgroupsTV = lessonCard.findViewById(R.id.para);
-        TextView subjectTV = lessonCard.findViewById(R.id.subject);
-        TextView timeTV = lessonCard.findViewById(R.id.time);
-        TextView audiencesTV = lessonCard.findViewById(R.id.audiences);
-        TextView lessonTypeTV = lessonCard.findViewById(R.id.lessonType);
-        TextView teachersTV = lessonCard.findViewById(R.id.teachers);
-
-        subgroupsTV.setText(subgroups);
-        subjectTV.setText(subject);
-        timeTV.setText(time);
-        audiencesTV.setText(audience);
-        lessonTypeTV.setText(type);
-        teachersTV.setText(teacher);
-
-        // Добавляем CardView в контейнер
-        lessonContainer.addView(lessonCard);
-    }
-    // Вспомогательный метод для получения идентификатора дня
-    private String getDayId(int weekday) {
-        switch (weekday) {
-            case 1: return "Monday";
-            case 2: return "Tuesday";
-            case 3: return "Wednesday";
-            case 4: return "Thursday";
-            case 5: return "Friday";
-            case 6: return "Saturday";
-            default: return "";
-        }
-    }
-
-    private void updateDates() {
-        // Получаем текущую дату для выбранной недели
-        Calendar calendar = Calendar.getInstance();
-        calendar.set(Calendar.WEEK_OF_YEAR, selectedWeek);
-        calendar.set(Calendar.YEAR, selectedYear);
-        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
-
-        // Отображаем даты
-        String currentDate = sdf.format(calendar.getTime());
-        CurrectData.setText(currentDate);  // Текущая неделя
-        compactCurrentDate.setText(currentDate);  // Текущая неделя
-
-        // Предыдущая неделя
-        calendar.add(Calendar.WEEK_OF_YEAR, -1);
-        String previousDate = sdf.format(calendar.getTime());
-        dataPrevious.setText(previousDate);
-
-        // Следующая неделя
-        calendar.add(Calendar.WEEK_OF_YEAR, 2);  // Добавляем 2 недели для следующей
-        String nextDate = sdf.format(calendar.getTime());
-        dataNext.setText(nextDate);
-    }
-    // Открытие расписания группы
-    private void showGroupSchedule(GroupSchedule schedule) {
-        Intent intent = new Intent(this, GroupScheduleActivity.class);
-        intent.putExtra("schedule", schedule.getSchedule());
-        startActivity(intent);
     }
 
     private void showError(String message) {
-        runOnUiThread(() -> {
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-            Log.e(TAG, message);
-        });
+        runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
     }
 
-    public static class GroupSchedule {
-        private final String groupName;
-        private final String schedule;
-
-        public GroupSchedule(String groupName, String schedule) {
-            this.groupName = groupName;
-            this.schedule = schedule;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (executor != null) {
+            executor.shutdownNow();
         }
+        // Сохраняем данные при выходе
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(KEY_LAST_SEARCH, currentSearchQuery);
+        editor.apply();
+    }
 
-        public String getGroupName() {
-            return groupName;
-        }
+    private static class LessonData {
+        String subject;
+        String type;
+        int subgroups;
+        String time;
+        String audience;
+        String teacher;
+        int weekday;
 
-        public String getSchedule() {
-            return schedule;
+        LessonData(String subject, String type, int subgroups, String time,
+                   String audience, String teacher, int weekday) {
+            this.subject = subject;
+            this.type = type;
+            this.subgroups = subgroups;
+            this.time = time;
+            this.audience = audience;
+            this.teacher = teacher;
+            this.weekday = weekday;
         }
     }
 }

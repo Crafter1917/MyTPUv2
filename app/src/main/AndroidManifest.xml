@@ -26,7 +26,13 @@
         </activity>
         <activity android:name=".DashboardActivity" />
         <activity android:name=".GroupScheduleActivity" />
-        <activity android:name=".ScheduleActivity" />
+        <activity
+            android:name=".ScheduleActivity"
+            android:screenOrientation="portrait"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            tools:ignore="DiscouragedApi">
+            <!-- Остальные атрибуты активности -->
+        </activity>
 
     </application>
     <uses-permission android:name="android.permission.INTERNET" />

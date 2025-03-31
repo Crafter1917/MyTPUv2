@@ -6,7 +6,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    >
+    android:fitsSystemWindows="true"
+    android:id="@+id/root_layout">
 
 
     <LinearLayout
@@ -81,10 +82,10 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:fillViewport="true"
             android:background="@drawable/rounded_scroll_background"
+            android:clipToPadding="true"
             android:padding="8dp"
-            android:clipToPadding="false">
+            android:fillViewport="true">
 
             <!-- Основной контейнер расписания -->
             <LinearLayout
@@ -92,7 +93,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="8dp">
+                android:padding="4dp">
 
                 <LinearLayout
 
@@ -111,7 +112,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="8dp"
-
+                        android:layout_marginTop="8dp"
                         app:cardCornerRadius="16dp">
 
                         <LinearLayout

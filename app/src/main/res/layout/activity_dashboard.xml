@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:padding="16dp">
     <TextView
         android:id="@+id/dashboardTextView"
@@ -14,6 +15,11 @@
         android:textSize="16sp" />
     <!-- Панель навигации закреплена сверху -->
     <include layout="@layout/navigation_panel"/>
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
     <!-- Основное содержимое страницы -->
     <ScrollView
         android:id="@+id/main_scroll_view"

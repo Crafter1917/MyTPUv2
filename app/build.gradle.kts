@@ -41,6 +41,8 @@ dependencies {
     implementation ("com.squareup.okhttp3:okhttp:4.9.3")
     implementation ("com.google.code.gson:gson:2.8.9")
     implementation ("androidx.recyclerview:recyclerview:1.2.1")
+    implementation ("androidx.work:work-runtime:2.7.1")
+    implementation ("androidx.concurrent:concurrent-futures:1.1.0")
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)

@@ -3,6 +3,7 @@ package com.example.mytpu;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
@@ -27,10 +28,17 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import androidx.core.view.ViewCompat;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -58,9 +66,14 @@ public class ScheduleActivity extends AppCompatActivity {
             R.id.scheduleContainerSaturday,
             R.id.scheduleContainerSunday
     };
+
     private AutoCompleteTextView searchField;
     private ImageButton btnSearchToggle;
-
+    private static final String LOG_DIR = "app_logs";
+    private static final String LOG_FILE = "crash_logs.txt";
+    private static final int MAX_LOG_SIZE = 1024 * 1024; // 1MB
+    private static final SimpleDateFormat LOG_DATE_FORMAT =
+            new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault());
     private boolean isLoading = false;
     private boolean[] hasLessons = new boolean[DAYS_IN_WEEK];
     private boolean clearData = false;
@@ -86,7 +99,7 @@ public class ScheduleActivity extends AppCompatActivity {
     private boolean isSearchExpanded = false;
     private int originalCardWidth;
     private boolean isKeyboardVisible = false;
-    private final LinkedHashMap<String, List<LessonData>> groupedLessonsMap = new LinkedHashMap<>();
+    private final ConcurrentHashMap<String, List<LessonData>> groupedLessonsMap = new ConcurrentHashMap<>();
     private final Object lock = new Object(); // Добавить объект для синхронизации
 
     private static final int[] DAY_HEADER_IDS = {
@@ -124,11 +137,33 @@ public class ScheduleActivity extends AppCompatActivity {
         updateSearchFieldBehavior();
         // Восстановление состояния
         if (savedInstanceState != null) {
-            jsonDataOfSite = savedInstanceState.getString("JSON_DATA");
             currentSearchQuery = savedInstanceState.getString("CURRENT_SEARCH", "");
             selectedWeek = savedInstanceState.getInt("SELECTED_WEEK");
             selectedYear = savedInstanceState.getInt("SELECTED_YEAR");
+            hasLessons = savedInstanceState.getBooleanArray("HAS_LESSONS");
         }
+        View rootView = findViewById(R.id.root_layout); // Замените на ваш корневой макет
+        ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
+            // Получаем системные отступы
+            int systemWindowInsetTop = insets.getSystemWindowInsetTop();
+            int systemWindowInsetBottom = insets.getSystemWindowInsetBottom();
+            int systemWindowInsetLeft = insets.getSystemWindowInsetLeft();
+            int systemWindowInsetRight = insets.getSystemWindowInsetRight();
+
+            // Применяем отступы к вашему макету
+            v.setPadding(systemWindowInsetLeft, systemWindowInsetTop, systemWindowInsetRight, systemWindowInsetBottom);
+
+            // Возвращаем insets для дальнейшей обработки
+            return insets;
+        });
+        // Всегда загружайте JSON заново
+        Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
+            logCrash(ex); // Только при вылете!
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(10);
+            }, 500); // Задержка для гарантированной записи
+        });
         searchCard.post(() -> {
             originalCardWidth = searchCard.getWidth();
             setupKeyboardListener();
@@ -143,6 +178,64 @@ public class ScheduleActivity extends AppCompatActivity {
             processDataInBackground(jsonDataOfSite); // Обрабатываем сохраненные данные
         }
     }
+    // Добавьте в класс
+
+    private void logCrash(Throwable ex) {
+        try {
+            String logMessage = buildLogMessage(ex);
+            writeLogToFile(logMessage);
+        } catch (IOException e) {
+            Log.e("Logs path", "Failed to write crash log", e);
+        }
+    }
+
+    private String buildLogMessage(Throwable ex) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        ex.printStackTrace(pw);
+
+        return String.format(
+                "%s [%d] %s: %s\n%s",
+                LOG_DATE_FORMAT.format(new Date()),
+                android.os.Process.myPid(),
+                "CRASH",
+                ex.getMessage(),
+                sw.toString()
+        );
+    }
+
+    private synchronized void writeLogToFile(String message) throws IOException {
+        File logDir = new File(getFilesDir(), LOG_DIR);
+        Log.d("Logs path", "Logs path: " + logDir.getAbsolutePath());
+        if (!logDir.exists() && !logDir.mkdirs()) {
+            throw new IOException("Failed to create log directory");
+        }
+
+        File logFile = new File(logDir, LOG_FILE);
+        if (logFile.length() > MAX_LOG_SIZE) {
+            rotateLogs(logDir);
+        }
+
+        try (FileWriter writer = new FileWriter(logFile, true)) {
+            writer.append(message);
+            writer.append("\n\n");
+        }
+    }
+
+    private void rotateLogs(File logDir) {
+        File current = new File(logDir, LOG_FILE);
+        File backup = new File(logDir, "crash_logs_old.txt");
+
+        if (backup.exists() && !backup.delete()) {
+            Log.w(TAG, "Failed to delete old backup log");
+        }
+
+        if (!current.renameTo(backup)) {
+            Log.w(TAG, "Failed to rotate log file");
+        }
+    }
+
+
 
     private void toggleSearch() {
         if (isSearchExpanded) {
@@ -156,7 +249,6 @@ public class ScheduleActivity extends AppCompatActivity {
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putString("CURRENT_SEARCH", currentSearchQuery);
-        outState.putString("JSON_DATA", jsonDataOfSite);
         outState.putInt("SELECTED_WEEK", selectedWeek);
         outState.putInt("SELECTED_YEAR", selectedYear);
         outState.putBooleanArray("HAS_LESSONS", hasLessons);
@@ -682,7 +774,7 @@ public class ScheduleActivity extends AppCompatActivity {
 
     @SuppressLint("DefaultLocale")
     private void parseSchedule(String jsonData) {
-        new Thread(() -> {
+        executor.execute(() -> { // Заменяем new Thread(...).start() на executor.execute
             try {
                 JSONObject root = new JSONObject(jsonData);
                 JSONArray faculties = root.optJSONArray("faculties");
@@ -695,7 +787,7 @@ public class ScheduleActivity extends AppCompatActivity {
                 });
 
                 if (faculties != null) {
-                    synchronized (lock) { // Синхронизация доступа к коллекции
+                    synchronized (lock) {
                         groupedLessonsMap.clear();
                     }
                     Arrays.fill(hasLessons, false);
@@ -714,7 +806,6 @@ public class ScheduleActivity extends AppCompatActivity {
                     }
 
                     runOnUiThread(() -> {
-                        // Создаем отсортированный список ключей
                         List<String> sortedKeys = new ArrayList<>(groupedLessonsMap.keySet());
                         Collections.sort(sortedKeys, (k1, k2) -> {
                             String[] parts1 = k1.split("\\|");
@@ -724,7 +815,6 @@ public class ScheduleActivity extends AppCompatActivity {
                             return parts1[1].compareTo(parts2[1]);
                         });
 
-                        // Добавляем элементы в отсортированном порядке
                         for (String key : sortedKeys) {
                             addGroupedLessonsToUI(groupedLessonsMap.get(key));
                         }
@@ -735,17 +825,20 @@ public class ScheduleActivity extends AppCompatActivity {
             } catch (JSONException e) {
                 runOnUiThread(() -> showError("Ошибка разбора данных: " + e.getMessage()));
             }
-        }).start();
+        });
     }
 
     private void addGroupedLessonsToUI(List<LessonData> lessons) {
-        if (lessons.isEmpty()) return;
+        // Проверяем, что список уроков не null и не пустой
+        if (lessons == null || lessons.isEmpty()) return;
+
         // Сортируем уроки по времени начала
         Collections.sort(lessons, (l1, l2) -> {
             String time1 = l1.time.split(" - ")[0];
             String time2 = l2.time.split(" - ")[0];
             return time1.compareTo(time2);
         });
+
         runOnUiThread(() -> {
             LessonData firstLesson = lessons.get(0);
             LinearLayout container = getDayContainer(firstLesson.weekday);
@@ -753,6 +846,7 @@ public class ScheduleActivity extends AppCompatActivity {
 
             String uniqueKey = firstLesson.weekday + "|" + firstLesson.time;
 
+            // Проверяем, не добавлена ли уже эта пара
             if (!paraContainers.containsKey(uniqueKey)) {
                 CardView paraCard = createParaCard(firstLesson.time);
                 paraCard.setLayoutParams(new LinearLayout.LayoutParams(
@@ -763,6 +857,7 @@ public class ScheduleActivity extends AppCompatActivity {
                 LinearLayout lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
                 paraContainers.put(uniqueKey, lessonContainer);
 
+                // Добавляем все уроки для этой пары
                 for (LessonData lesson : lessons) {
                     View lessonView = createLessonCard(
                             lesson.subgroups > 0 ? "Подгруппа: " + lesson.subgroups : "",
@@ -1028,28 +1123,23 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void performSearch() {
-        searchField = findViewById(R.id.searchField);
         String query = searchField.getText().toString().trim();
-        Log.d(TAG, "Выполнение поиска: " + query);
         currentSearchQuery = query.toLowerCase();
 
-        // Если данные еще не загружены - загружаем
         if ((jsonDataOfSite == null || jsonDataOfSite.isEmpty()) && !isLoading) {
             loadSchedule();
-        }
-        // Если данные уже загружены - фильтруем
-        else if (jsonDataOfSite != null) {
-            runOnUiThread(() -> {
-                clearScheduleContainers();
-                paraContainers.clear();
+        } else if (jsonDataOfSite != null) {
+            executor.execute(() -> { // Используем executor для обработки
+                runOnUiThread(() -> {
+                    clearScheduleContainers();
+                    paraContainers.clear();
+                });
                 parseSchedule(jsonDataOfSite);
             });
         }
 
-        runOnUiThread(() -> {
-            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-            imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
-        });
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        imm.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
     }
 
     private void showError(String message) {

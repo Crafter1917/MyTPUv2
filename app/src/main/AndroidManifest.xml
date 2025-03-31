@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET"
+        tools:ignore="ManifestOrder" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+
+
 
     <application
         android:usesCleartextTraffic="true"
@@ -25,15 +34,36 @@
             </intent-filter>
         </activity>
         <activity android:name=".DashboardActivity" />
-        <activity android:name=".GroupScheduleActivity" />
         <activity
             android:name=".ScheduleActivity"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullSensor"
             android:configChanges="keyboardHidden|orientation|screenSize"
             tools:ignore="DiscouragedApi">
             <!-- Остальные атрибуты активности -->
         </activity>
+        <activity
+            android:name=".CourseActivity"
+            android:exported="false"
+            android:launchMode="standard"/>
+        <activity
+            android:name=".ModuleDetailActivity"
+            android:parentActivityName=".CourseActivity"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".CourseActivity" />
+        </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.example.mytpu.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+        <meta-data
+            android:name="android.support.FILE_PROVIDER_PATHS"
+            android:resource="@xml/file_paths" />
+    </provider>
 
-    </application>
-    <uses-permission android:name="android.permission.INTERNET" />
+
+</application>
+
 </manifest>

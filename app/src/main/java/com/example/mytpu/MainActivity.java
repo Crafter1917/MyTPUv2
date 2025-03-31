@@ -3,6 +3,7 @@ package com.example.mytpu;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -10,9 +11,9 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -20,14 +21,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import okhttp3.FormBody;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
-    static final String LOGIN_URL = "https://stud.lms.tpu.ru/login/index.php";
+    private static final String LOGIN_API_URL = "https://stud.lms.tpu.ru/login/token.php";
+    private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
 
-    // Получение общего OkHttpClient из MyApplication
     private OkHttpClient client;
     private ExecutorService executor;
     private SharedPreferences sharedPreferences;
@@ -35,20 +37,18 @@ public class MainActivity extends AppCompatActivity {
     private EditText usernameField;
     private EditText passwordField;
     private Button loginButton;
-    private String sesskey;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         client = ((MyApplication) getApplication()).getClient();
-        // Инициализация представлений
+
         logTextView = findViewById(R.id.logTextView);
         usernameField = findViewById(R.id.username);
         passwordField = findViewById(R.id.password);
         loginButton = findViewById(R.id.loginButton);
 
-        // Настройка безопасного хранилища
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             sharedPreferences = EncryptedSharedPreferences.create(
@@ -59,18 +59,16 @@ public class MainActivity extends AppCompatActivity {
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
         } catch (GeneralSecurityException | IOException e) {
-            Toast.makeText(this, "Ошибка инициализации безопасного хранилища", Toast.LENGTH_LONG).show();
+            showToast("Ошибка инициализации безопасного хранилища");
             return;
         }
 
         executor = Executors.newSingleThreadExecutor();
 
-        // Проверка сохраненных данных для автовхода
         if (sharedPreferences.contains("username") && sharedPreferences.contains("password")) {
             executor.execute(this::autoLogin);
         }
 
-        // Настройка кнопки входа
         loginButton.setOnClickListener(v -> {
             String username = usernameField.getText().toString().trim();
             String password = passwordField.getText().toString().trim();
@@ -78,94 +76,119 @@ public class MainActivity extends AppCompatActivity {
             if (!username.isEmpty() && !password.isEmpty()) {
                 executor.execute(() -> login(username, password));
             } else {
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Введите логин и пароль", Toast.LENGTH_SHORT).show()
-                );
+                showToast("Введите логин и пароль");
             }
         });
     }
 
-    private void addLog(String message) {
-        runOnUiThread(() -> logTextView.append(message + "\n"));
-    }
-
     private void login(String username, String password) {
         try {
-            addLog("Начало логина для пользователя: " + username);
+            addLog("Попытка входа для: " + username);
 
-            Request getRequest = new Request.Builder()
-                    .url(LOGIN_URL)
+            FormBody formBody = new FormBody.Builder()
+                    .add("username", username)
+                    .add("password", password)
+                    .add("service", "moodle_mobile_app")
                     .build();
 
-            try (Response getResponse = client.newCall(getRequest).execute()) {
-                if (!getResponse.isSuccessful()) {
-                    throw new IOException("Ошибка подключения: " + getResponse.code());
+            Request request = new Request.Builder()
+                    .url(LOGIN_API_URL)
+                    .post(formBody)
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                String responseBody = response.body().string();
+
+                if (!response.isSuccessful()) {
+                    handleLoginError(responseBody);
+                    return;
                 }
 
-                String responseBody = getResponse.body() != null ? getResponse.body().string() : "";
-                if (responseBody.isEmpty()) {
-                    throw new IOException("Получено пустое тело ответа.");
-                }
-
-                Document document = Jsoup.parse(responseBody);
-                Element sesskeyElement = document.selectFirst("input[name=sesskey]");
-                if (sesskeyElement != null) {
-                    sesskey = sesskeyElement.attr("value");
-                    addLog("Sesskey извлечен: " + sesskey);
+                JSONObject json = new JSONObject(responseBody);
+                if (json.has("token")) {
+                    String token = json.getString("token");
+                    saveCredentials(username, password, token);
+                    fetchUserInfo(token);
                     navigateToDashboard();
-                }
-//ну типа тест изменений с гитом
-                Element tokenElement = document.selectFirst("input[name=logintoken]");
-                if (tokenElement == null) {
-                    throw new IOException("Не удалось найти logintoken на странице.");
-                }
-
-                String logintoken = tokenElement.attr("value");
-                addLog("Получен logintoken: " + logintoken);
-
-                FormBody.Builder formBuilder = new FormBody.Builder()
-                        .add("anchor", "")
-                        .add("logintoken", logintoken)
-                        .add("username", username)
-                        .add("password", password);
-
-                Request postRequest = new Request.Builder()
-                        .url(LOGIN_URL)
-                        .post(formBuilder.build())
-                        .build();
-
-                try (Response postResponse = client.newCall(postRequest).execute()) {
-                    if (!postResponse.isSuccessful()) {
-                        throw new IOException("Ошибка входа. Проверьте логин и пароль.");
-                    }
-
-                    String postResponseUrl = postResponse.request().url().toString();
-                    if (postResponseUrl.equals(LOGIN_URL)) {
-                        throw new IOException("Ошибка входа. Проверьте логин и пароль.");
-                    }
-
-                    addLog("Успешный вход в систему!");
-                    navigateToDashboard();
-                    saveCredentials(username, password);
+                } else {
+                    handleLoginError(responseBody);
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | JSONException e) {
             addLog("Ошибка: " + e.getMessage());
         }
     }
 
-    private void navigateToDashboard() {
-        Intent intent = new Intent(MainActivity.this, DashboardActivity.class);
-        startActivity(intent);
-        finish(); // Завершаем MainActivity, чтобы пользователь не мог вернуться назад
+    private void handleLoginError(String responseBody) {
+        try {
+            JSONObject errorJson = new JSONObject(responseBody);
+            String error = errorJson.optString("error", "Неизвестная ошибка");
+            String errorCode = errorJson.optString("errorcode", "");
+
+            runOnUiThread(() -> {
+                if (errorCode.equals("invalidlogin")) {
+                    passwordField.setError("Неверный логин или пароль");
+                } else {
+                    Toast.makeText(this, "Ошибка: " + error, Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (JSONException e) {
+            runOnUiThread(() ->
+                    Toast.makeText(this, "Ошибка формата ответа", Toast.LENGTH_SHORT).show()
+            );
+        }
     }
 
-    private void saveCredentials(String username, String password) {
-        sharedPreferences.edit()
-                .putString("username", username)
-                .putString("password", password)
-                .apply();
-        addLog("Данные пользователя сохранены.");
+    private void fetchUserInfo(String token) {
+        try {
+            HttpUrl url = HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
+                    .addQueryParameter("wstoken", token)
+                    .addQueryParameter("wsfunction", "core_webservice_get_site_info")
+                    .addQueryParameter("moodlewsrestformat", "json")
+                    .build();
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .get()
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    JSONObject json = new JSONObject(response.body().string());
+                    if (json.has("userid")) {
+                        int userId = json.getInt("userid");
+                        sharedPreferences.edit().putInt("userid", userId).apply();
+                        addLog("ID пользователя: " + userId);
+                    }
+                }
+            }
+        } catch (IOException | JSONException e) {
+            addLog("Ошибка получения информации: " + e.getMessage());
+        }
+    }
+
+    private void saveCredentials(String username, String password, String token) {
+        try {
+            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+            SharedPreferences sharedPreferences = EncryptedSharedPreferences.create(
+                    "user_credentials",
+                    masterKeyAlias,
+                    this,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putString("username", username);
+            editor.putString("password", password);
+            editor.putString("token", token);
+            editor.apply();
+
+            // Также обновляем токен в MyApplication
+            ((MyApplication) getApplication()).setAuthToken(token);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error saving credentials", e);
+        }
     }
 
     private void autoLogin() {
@@ -173,8 +196,24 @@ public class MainActivity extends AppCompatActivity {
         String password = sharedPreferences.getString("password", null);
 
         if (username != null && password != null) {
-            addLog("Выполняется автовход для пользователя: " + username);
+            addLog("Автовход для: " + username);
             login(username, password);
         }
     }
+
+    private void navigateToDashboard() {
+        runOnUiThread(() -> {
+            startActivity(new Intent(MainActivity.this, DashboardActivity.class));
+            finish();
+        });
+    }
+
+    private void addLog(String message) {
+        runOnUiThread(() -> logTextView.append(message + "\n"));
+    }
+
+    private void showToast(String message) {
+        runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
+    }
+
 }

@@ -772,7 +772,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
 
             } catch (Exception e) {
                 Log.e(TAG, "Image load error: " + e.getMessage());
-                return getResources().getDrawable(R.drawable.ic_broken_img);
+                return null;
             }
         }
 

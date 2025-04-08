@@ -1,8 +1,15 @@
 package com.example.mytpu;
 
+import android.Manifest;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
@@ -26,9 +33,33 @@ import android.widget.AutoCompleteTextView;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresPermission;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.view.ViewCompat;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
+
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -36,7 +67,6 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.ParseException;
@@ -45,12 +75,10 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import android.animation.ObjectAnimator;
 import android.view.animation.OvershootInterpolator;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
@@ -66,7 +94,10 @@ public class ScheduleActivity extends AppCompatActivity {
             R.id.scheduleContainerSaturday,
             R.id.scheduleContainerSunday
     };
-
+    private static final String SCHEDULE_FILE_NAME = "tpu_schedule.json";
+    private File scheduleFile;
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable hourlyCheckRunnable;
     private AutoCompleteTextView searchField;
     private ImageButton btnSearchToggle;
     private static final String LOG_DIR = "app_logs";
@@ -117,6 +148,10 @@ public class ScheduleActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_schedule);
 
+        File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
+        if (!documentsDir.exists()) documentsDir.mkdirs();
+        scheduleFile = new File(documentsDir, SCHEDULE_FILE_NAME);
+
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         groupsTextView = findViewById(R.id.groups);
         searchAdapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line);
@@ -125,6 +160,7 @@ public class ScheduleActivity extends AppCompatActivity {
         btnSearchToggle = findViewById(R.id.btnSearchToggle);
         searchField.setAdapter(searchAdapter);
         searchCard = findViewById(R.id.searchCard);
+
         restoreLastSearch();
         updateGroupsTextView(currentSearchQuery);
         initViews();
@@ -133,6 +169,7 @@ public class ScheduleActivity extends AppCompatActivity {
         setupSearchField();
         initHttpClient();
         loadInitialWeek();
+
         setupSearchAutocomplete();
         updateSearchFieldBehavior();
         // Восстановление состояния
@@ -142,6 +179,7 @@ public class ScheduleActivity extends AppCompatActivity {
             selectedYear = savedInstanceState.getInt("SELECTED_YEAR");
             hasLessons = savedInstanceState.getBooleanArray("HAS_LESSONS");
         }
+
         View rootView = findViewById(R.id.root_layout); // Замените на ваш корневой макет
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
             // Получаем системные отступы
@@ -177,8 +215,16 @@ public class ScheduleActivity extends AppCompatActivity {
         } else {
             processDataInBackground(jsonDataOfSite); // Обрабатываем сохраненные данные
         }
+        hourlyCheckRunnable = new Runnable() {
+            @Override
+            public void run() {
+                checkForUpdates();
+                handler.postDelayed(this, 3600000); // Повтор каждые 60 минут
+            }
+        };
+
+        loadInitialData();
     }
-    // Добавьте в класс
 
     private void logCrash(Throwable ex) {
         try {
@@ -186,6 +232,245 @@ public class ScheduleActivity extends AppCompatActivity {
             writeLogToFile(logMessage);
         } catch (IOException e) {
             Log.e("Logs path", "Failed to write crash log", e);
+        }
+    }
+
+    private void loadInitialData() {
+        Log.d(TAG, "Начало загрузки начальных данных");
+        String offlineData = loadOfflineSchedule();
+
+        // 1. Сначала загружаем и показываем офлайн данные
+        if (offlineData != null) {
+            Log.d(TAG, "Используем офлайн данные");
+            jsonDataOfSite = offlineData;
+            processDataInBackgroundSync(offlineData);
+
+            // Обновляем UI с офлайн данными
+            runOnUiThread(() -> {
+                    parseSchedule(offlineData);
+            });
+        }
+
+        // 2. Затем в фоне проверяем обновления (если есть интернет)
+        if (isNetworkAvailable()) {
+            Log.d(TAG, "Начинаем проверку обновлений в фоне");
+            checkForUpdates();
+        } else if (offlineData == null) {
+            Log.d(TAG, "Нет интернета и офлайн данных");
+            showError("Нет подключения и локальных данных");
+        }
+    }
+
+    private void checkForUpdates() {
+        if (isLoading) {
+            Log.d(TAG, "Проверка обновлений уже выполняется");
+            return;
+        }
+
+        Log.d(TAG, "Начало проверки обновлений...");
+        isLoading = true;
+
+        executor.execute(() -> {
+            try (Response response = client.newCall(new Request.Builder()
+                    .url(API_URL)
+                    .build()).execute()) {
+
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "Ошибка проверки обновлений: " + response.code());
+                    return;
+                }
+
+                String onlineData = response.body().string();
+                String currentHash = computeHash(onlineData);
+                String savedHash = sharedPreferences.getString("schedule_hash", "");
+
+                if (!currentHash.equals(savedHash)) {
+                    Log.d(TAG, "Обнаружены изменения в расписании");
+
+                    // Сохраняем новые данные
+                    saveScheduleToFile(onlineData);
+
+                    runOnUiThread(() -> {
+                        // Показываем уведомление
+                        showUpdateNotification();
+
+                        // Обновляем данные только если они действительно изменились
+                        if (!onlineData.equals(jsonDataOfSite)) {
+                            jsonDataOfSite = onlineData;
+                            Toast.makeText(ScheduleActivity.this, "Расписание обновлено", Toast.LENGTH_SHORT).show();
+
+                            // Перезагружаем расписание, если есть активный поиск
+                            if (!currentSearchQuery.isEmpty()) {
+                                parseSchedule(onlineData);
+                            }
+                        }
+                    });
+                } else {
+                    Log.d(TAG, "Локальные данные актуальны");
+                }
+
+            } catch (IOException e) {
+                Log.e(TAG, "Ошибка сети при проверке обновлений: " + e.getMessage());
+            } finally {
+                isLoading = false;
+            }
+        });
+    }
+
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    private void showUpdateNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    "schedule_updates",
+                    "Обновления расписания",
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
+        }
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "schedule_updates")
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Обновление расписания")
+                .setContentText("Доступно новое расписание")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+
+        NotificationManagerCompat.from(this).notify(1, builder.build());
+    }
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    private void showNetworkErrorNotification() {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "network_errors")
+                .setContentTitle("Нет подключения")
+                .setContentText("Используются офлайн данные")
+                .setPriority(NotificationCompat.PRIORITY_LOW);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        NotificationManagerCompat.from(this).notify(2, builder.build());
+    }
+    private void processDataInBackgroundSync(String jsonData) {
+        try {
+            JSONObject root = new JSONObject(jsonData);
+            JSONArray faculties = root.optJSONArray("faculties");
+            collectSearchData(faculties != null ? faculties : new JSONArray());
+
+            runOnUiThread(() -> {
+                updateSearchAdapter();
+                updateGroupsTextView(currentSearchQuery);
+                if (!currentSearchQuery.isEmpty()) parseSchedule(jsonData);
+            });
+        } catch (JSONException e) {
+            Log.e(TAG, "JSON Error: ", e);
+        }
+    }
+
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager =
+                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        handler.post(hourlyCheckRunnable);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        handler.removeCallbacks(hourlyCheckRunnable);
+    }
+
+    // Хеширование данных
+    private String computeHash(String data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            Log.e(TAG, "Ошибка хеширования", e);
+            return "";
+        }
+    }
+
+    private static String bytesToHex(byte[] hash) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
+    }
+
+    private void saveHash(String data) {
+        String hash = computeHash(data);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString("schedule_hash", hash);
+        editor.apply();
+    }
+
+    private void saveScheduleToFile(String jsonData) {
+        executor.execute(() -> {
+            try {
+                FileOutputStream fos = new FileOutputStream(scheduleFile);
+                fos.write(jsonData.getBytes());
+                fos.close();
+                saveHash(jsonData);
+
+                Log.d(TAG, "Файл успешно сохранён");
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Расписание обновлено", Toast.LENGTH_SHORT).show());
+
+            } catch (IOException e) {
+                Log.e(TAG, "Ошибка сохранения: " + e.getMessage());
+            }
+        });
+    }
+
+    private String loadOfflineSchedule() {
+        Log.d(TAG, "Попытка загрузки офлайн расписания из: " + scheduleFile.getAbsolutePath());
+
+        if (!scheduleFile.exists()) {
+            Log.w(TAG, "Файл расписания не существует");
+            return null;
+        }
+
+        try {
+            FileInputStream fis = new FileInputStream(scheduleFile);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            Log.d(TAG, "Успешная загрузка офлайн данных");
+            return sb.toString();
+        } catch (IOException e) {
+            Log.e(TAG, "Ошибка чтения файла: " + e.getMessage());
+            return null;
         }
     }
 
@@ -234,7 +519,6 @@ public class ScheduleActivity extends AppCompatActivity {
             Log.w(TAG, "Failed to rotate log file");
         }
     }
-
 
 
     private void toggleSearch() {
@@ -669,9 +953,25 @@ public class ScheduleActivity extends AppCompatActivity {
                 .setInterpolator(new OvershootInterpolator(1.5f))
                 .start();
     }
-
+    private void processAndShowOfflineData(String offlineData) {
+        jsonDataOfSite = offlineData;
+        processDataInBackgroundSync(offlineData);
+        runOnUiThread(() -> {
+            if (!currentSearchQuery.isEmpty()) {
+                parseSchedule(offlineData);
+            }
+        });
+    }
     private void loadSchedule() {
+        if (jsonDataOfSite != null) return; // Не загружать если уже есть данные
         showLoading(true);
+        if (!isNetworkAvailable()) {
+            String offlineData = loadOfflineSchedule();
+            if (offlineData != null) {
+                processAndShowOfflineData(offlineData);
+            }
+            return;
+        }
         executor.execute(() -> {
             try (Response response = client.newCall(new Request.Builder()
                     .url(API_URL)
@@ -682,12 +982,16 @@ public class ScheduleActivity extends AppCompatActivity {
                     return;
                 }
 
-                jsonDataOfSite = response.body().string();
+                // Получаем данные только один раз
+                String responseData = response.body().string();
+                jsonDataOfSite = responseData;
 
-                // Обрабатываем данные и обновляем поисковые подсказки
-                processDataInBackground(jsonDataOfSite);
+                // Обрабатываем данные и сохраняем
+                processDataInBackground(responseData);
+                saveScheduleToFile(responseData);
+
                 runOnUiThread(() -> {
-                    updateGroupsTextView(currentSearchQuery); // Обновляем после загрузки
+                    updateGroupsTextView(currentSearchQuery);
                     updateSearchAdapter();
                 });
 
@@ -1089,7 +1393,6 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
 
-
     private void updateDates() {
         SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
         Calendar cal = Calendar.getInstance();
@@ -1177,5 +1480,69 @@ public class ScheduleActivity extends AppCompatActivity {
             this.teacher = teacher;
             this.weekday = weekday;
         }
+    }
+
+
+    public class ScheduleWorker extends Worker {
+        public ScheduleWorker(@NonNull Context context, @NonNull WorkerParameters params) {
+            super(context, params);
+        }
+
+        @NonNull
+        @Override
+        public Result doWork() {
+            new OkHttpClient().newCall(new Request.Builder()
+                    .url("http://uti.tpu.ru/timetable_import.json")
+                    .build()).enqueue(new Callback() {
+                // Убираем @NonNull аннотации из параметров
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Log.e("ScheduleWorker", "Ошибка проверки", e);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    String data = response.body().string();
+                    String hash = computeHash(data);
+                    SharedPreferences prefs = getApplicationContext()
+                            .getSharedPreferences("SchedulePrefs", Context.MODE_PRIVATE);
+
+                    if (!hash.equals(prefs.getString("schedule_hash", ""))) {
+                        showNotification(getApplicationContext());
+                    }
+                }
+            });
+            return Result.success();
+        }
+    }
+
+    private void showNotification(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    "schedule_updates",
+                    "Обновления расписания",
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
+        }
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this.getApplicationContext(), "schedule_updates")
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Обновление расписания")
+                .setContentText("Доступно новое расписание")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+
+        if (ActivityCompat.checkSelfPermission(this.getApplicationContext(), Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        NotificationManagerCompat.from(this.getApplicationContext()).notify(1, builder.build());
     }
 }

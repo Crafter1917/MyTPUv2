@@ -38,7 +38,6 @@ dependencies {
     implementation ("com.squareup.okhttp3:okhttp-urlconnection:4.11.0")
     implementation ("com.squareup.okhttp3:logging-interceptor:4.11.0")
     implementation ("org.jsoup:jsoup:1.15.4")
-    implementation ("com.squareup.okhttp3:okhttp:4.9.3")
     implementation ("com.google.code.gson:gson:2.8.9")
     implementation ("androidx.recyclerview:recyclerview:1.2.1")
     implementation ("androidx.work:work-runtime:2.7.1")

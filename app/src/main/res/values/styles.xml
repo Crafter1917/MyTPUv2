@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Базовый стиль для всего текста -->
+    <style name="TextAppearance.App.Body" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="fontFamily">@font/sirius_regular</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <!-- Стиль для заголовков -->
+    <style name="TextAppearance.App.Headline" parent="TextAppearance.MaterialComponents.Headline5">
+        <item name="fontFamily">@font/sirius_bold</item>
+        <item name="android:textSize">24sp</item>
+    </style>
+
+    <!-- Стили для кнопок -->
+    <style name="TextAppearance.App.Button" parent="TextAppearance.MaterialComponents.Button">
+        <item name="fontFamily">@font/sirius_bold</item>
+    </style>
+</resources>

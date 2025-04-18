@@ -1,18 +1,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Base.Theme.MyTPU" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/greentpu</item>
-        <item name="colorPrimaryVariant">@color/darkgreentpu</item>
-        <item name="colorOnPrimary">@color/whitegreentpu</item>
+        <item name="colorPrimary">@color/darkgreentpu</item>
+        <item name="colorPrimaryVariant">@color/blackishgreentpu</item>
+        <item name="colorOnPrimary">@color/blackgreentpu</item>
 
-        <!-- Secondary Color (дополнительный цвет) -->
-        <item name="colorSecondary">@color/blackgreentpu</item>
-        <item name="colorSecondaryVariant">@color/black</item>
+        <item name="colorSecondary">@color/greentpu</item>
+        <item name="colorSecondaryVariant">@color/white</item>
         <item name="colorOnSecondary">@color/black</item>
-        <item name="instituteLogo">@drawable/logo_light</item>
 
-        <!-- Background -->
-        <item name="android:windowBackground">@color/white</item>
+        <item name="android:windowBackground">@color/blackgreentpu</item>
+        <item name="instituteLogo">@drawable/logo_dark</item>
         <!-- Общие настройки шрифтов -->
         <item name="fontFamily">@font/sirius_regular</item>
 
@@ -23,6 +21,4 @@
         <item name="textAppearanceBodyMedium">@style/TextAppearance.App.Body</item>
         <item name="textAppearanceButton">@style/TextAppearance.App.Button</item>
     </style>
-
-    <style name="Theme.MyTPU" parent="Base.Theme.MyTPU" />
 </resources>

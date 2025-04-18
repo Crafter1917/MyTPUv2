@@ -1,5 +1,6 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -7,6 +8,13 @@
     android:padding="16dp">
 
     <!-- Поле для ввода имени пользователя -->
+
+    <ImageView
+        android:id="@+id/imageView1"
+        android:layout_width="wrap_content"
+        android:layout_height="100dp"
+        android:src="?attr/instituteLogo"/>
+
     <EditText
         android:id="@+id/username"
         android:layout_width="match_parent"
@@ -15,6 +23,9 @@
         android:inputType="text" />
 
     <!-- Поле для ввода пароля -->
+
+    <!-- Кнопка входа -->
+
     <EditText
         android:id="@+id/password"
         android:layout_width="match_parent"
@@ -22,7 +33,6 @@
         android:hint="Пароль"
         android:inputType="textPassword" />
 
-    <!-- Кнопка входа -->
     <Button
         android:id="@+id/loginButton"
         android:layout_width="match_parent"
@@ -32,6 +42,6 @@
     <TextView
         android:id="@+id/logTextView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="298dp"
         android:hint="логи" />
 </LinearLayout>

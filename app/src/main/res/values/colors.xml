@@ -2,4 +2,11 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="greentpu">#28be46</color>
+    <color name="darkgreentpu">#187029</color>
+    <color name="brightgreentpu">#56dc71</color>
+    <color name="whiteishgreentpu">#9deaac</color>
+    <color name="blackishgreentpu">#092a10</color>
+    <color name="whitegreentpu">#e3f9e7</color>
+    <color name="blackgreentpu">#030e05</color>
 </resources>

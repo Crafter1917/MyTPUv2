@@ -2,9 +2,11 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/imageView1"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp">
+
     <TextView
         android:id="@+id/dashboardTextView"
         android:layout_width="match_parent"
@@ -18,7 +20,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentTop="true"
-        android:background="@android:color/white"
+        android:background="?attr/colorPrimary"
+        android:backgroundTint="?attr/colorPrimary"
         android:elevation="4dp"
         android:orientation="horizontal"
         android:padding="8dp">
@@ -29,7 +32,12 @@
             android:layout_height="wrap_content"
             android:layout_weight="12"
             android:background="@android:color/holo_blue_light"
-            android:text="Расписание" />
+            android:text=" "
+            app:icon="@drawable/ic_schedule"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="32dp"
+            app:iconTint="?attr/colorSecondaryVariant" />
 
         <Button
             android:id="@+id/button_mail"
@@ -37,7 +45,12 @@
             android:layout_height="wrap_content"
             android:layout_weight="12"
             android:background="@android:color/holo_green_light"
-            android:text="Почта" />
+            android:text=" "
+            app:icon="@drawable/ic_mail"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="32dp"
+            app:iconTint="?attr/colorSecondaryVariant" />
 
         <Button
             android:id="@+id/button_sites"
@@ -45,7 +58,12 @@
             android:layout_height="wrap_content"
             android:layout_weight="12"
             android:background="@android:color/holo_orange_light"
-            android:text="Сайты" />
+            android:text=" "
+            app:icon="@drawable/ic_web"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="32dp"
+            app:iconTint="?attr/colorSecondaryVariant" />
 
         <Button
             android:id="@+id/logoutButton"
@@ -53,7 +71,12 @@
             android:layout_height="wrap_content"
             android:layout_weight="12"
             android:background="@android:color/holo_red_light"
-            android:text="Выход" />
+            android:text=" "
+            app:icon="@drawable/ic_exit"
+            app:iconGravity="textStart"
+            app:iconPadding="8dp"
+            app:iconSize="32dp"
+            app:iconTint="?attr/colorSecondaryVariant" />
     </LinearLayout>
 
     <!-- Основное содержимое страницы -->
@@ -70,25 +93,32 @@
             android:orientation="vertical">
 
             <!-- Заголовок страницы -->
+
+            <ImageView
+                android:id="@+id/imageView2"
+                android:layout_width="match_parent"
+                android:layout_height="100dp"
+                android:src="?attr/instituteLogo" />
+
             <TextView
                 android:id="@+id/welcomeTextView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="ЛИЧНЫЙ КАБИНЕТ"
-
-                android:textStyle="bold"
-                android:gravity="center"
                 android:layout_marginBottom="12dp"
-                android:textSize="24sp" />
+
+                android:gravity="center"
+                android:text="ЛИЧНЫЙ КАБИНЕТ"
+                android:textSize="24sp"
+                android:textStyle="bold" />
 
             <!-- Оповещения -->
             <TextView
                 android:id="@+id/notification_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
                 android:text="Уведомления"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/notificationTextView"
@@ -102,17 +132,15 @@
                 android:id="@+id/course_overview_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:text="Обзор курсов"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp" />
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:id="@+id/coursesContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-            </LinearLayout>
-
+                android:orientation="vertical"></LinearLayout>
 
 
             <!-- Недавно посещенные курсы -->
@@ -120,37 +148,38 @@
                 android:id="@+id/recent_courses_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:text="Недавно посещенные курсы"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp" />
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
 
                 <Button
                     android:id="@+id/button_recent_course1"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Недавний курс 1"
-                    android:background="@android:color/holo_blue_dark" />
+                    android:background="@android:color/holo_blue_dark"
+                    android:text="Недавний курс 1" />
 
                 <Button
                     android:id="@+id/button_recent_course2"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Недавний курс 2"
-                    android:background="@android:color/holo_purple" />
+                    android:background="@android:color/holo_purple"
+                    android:text="Недавний курс 2" />
 
                 <Button
                     android:id="@+id/button_recent_course3"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Недавний курс 3"
-                    android:background="@android:color/holo_orange_dark" />
+                    android:background="@android:color/holo_orange_dark"
+                    android:text="Недавний курс 3" />
             </LinearLayout>
+
             <TextView
                 android:id="@+id/logTextView"
                 android:layout_width="match_parent"

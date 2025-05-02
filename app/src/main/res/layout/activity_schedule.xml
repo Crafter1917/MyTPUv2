@@ -13,9 +13,9 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#33000000"
         android:clipToPadding="true"
-        android:orientation="vertical"
-        android:background="#33000000">
+        android:orientation="vertical">
         <!-- Поисковая строка -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -84,8 +84,8 @@
             android:layout_weight="1"
             android:background="@drawable/rounded_scroll_background"
             android:clipToPadding="true"
-            android:padding="8dp"
-            android:fillViewport="true">
+            android:fillViewport="true"
+            android:padding="8dp">
 
             <!-- Основной контейнер расписания -->
             <LinearLayout
@@ -111,8 +111,8 @@
                     <androidx.cardview.widget.CardView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="8dp"
                         android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
                         app:cardCornerRadius="16dp">
 
                         <LinearLayout
@@ -412,147 +412,84 @@
 
                     <!-- Повторить CardView для других дней -->
                 </LinearLayout>
-            </LinearLayout>
-        </ScrollView>
-
-        <!-- Полная навигация по неделям -->
-        <LinearLayout
-            android:id="@+id/fullWeekNavigation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:orientation="vertical"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:paddingBottom="8dp"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/searchCard">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingBottom="8dp">
-
-                <Button
-                    android:id="@+id/btnPreviousWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#8954FF"
-                    android:elevation="2dp"
-                    android:paddingHorizontal="4dp"
-                    android:paddingVertical="8dp"
-                    android:text="Пред. неделя"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
-
-                <Button
-                    android:id="@+id/btnCurrentWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#6200EA"
-                    android:elevation="2dp"
-                    android:paddingHorizontal="4dp"
-                    android:paddingVertical="8dp"
-                    android:text="Текущая"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
-
-                <Button
-                    android:id="@+id/btnNextWeek"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:backgroundTint="#A567FF"
-                    android:elevation="2dp"
-                    android:paddingHorizontal="4dp"
-                    android:paddingVertical="8dp"
-                    android:text="След. неделя"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipToPadding="false"
-                android:orientation="horizontal">
-
                 <TextView
                     android:id="@+id/dataPrevious"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="TextView" />
-
-                <TextView
-                    android:id="@+id/CurrectData"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="TextView" />
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/dataNext"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="TextView" />
+                    android:visibility="gone" />
             </LinearLayout>
 
-        </LinearLayout>
+        </ScrollView>
 
-        <!-- Компактная навигация -->
-        <LinearLayout
-            android:id="@+id/compactWeekNavigation"
+
+        <!-- Год в верхней панели -->
+        <!-- В верхней части рядом с другими элементами -->
+
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:elevation="4dp"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:padding="4dp"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent">
+            app:cardCornerRadius="16dp">
+            >
 
-            <TextView
-                android:id="@+id/compactCurrentDate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="21.02.2025"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
 
-            <ImageButton
-                android:id="@+id/btnCompactPreviousWeekI"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_chevron_left" />
+                <TextView
+                    android:id="@+id/tvYear"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/btnCompactCurrentWeekI"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginEnd="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_hash" />
+                <Button
+                    android:id="@+id/currentDateButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_centerHorizontal="true"
+                    android:text="Сегодня"
+                    android:textColor="#6200EA"
+                    android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/btnCompactNextWeekI"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginEnd="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_chevron_right" />
-        </LinearLayout>
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/weekWheel"
+                    android:layout_width="match_parent"
+                    android:layout_height="100dp"
+                    android:layout_marginTop="16dp"
+                    android:clipToPadding="false"
+                    android:orientation="horizontal"
+                    android:padding="8dp"
+                    android:background="@drawable/border"
+                app:layoutManager="com.example.mytpu.schedule.WheelLayoutManager"
+                tools:ignore="SpeakableTextPresentCheck"
+                tools:listitem="@layout/item_week_wheel" />
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Внутри ScrollView или другого контейнера -->
+        <TextView
+            android:id="@+id/currentData"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Текущая дата"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/compactCurrentDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Дата"
+            android:visibility="gone" />
 
 
     </LinearLayout>

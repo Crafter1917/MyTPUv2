@@ -34,14 +34,24 @@ android {
 
 dependencies {
     // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
+    implementation ("androidx.recyclerview:recyclerview:1.3.2")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation ("com.squareup.okhttp3:okhttp-urlconnection:4.11.0")
     implementation ("com.squareup.okhttp3:logging-interceptor:4.11.0")
     implementation ("org.jsoup:jsoup:1.15.4")
-    implementation ("com.google.code.gson:gson:2.8.9")
     implementation ("androidx.recyclerview:recyclerview:1.2.1")
-    implementation ("androidx.work:work-runtime:2.7.1")
+    implementation ("androidx.work:work-runtime:2.9.0")
     implementation ("androidx.concurrent:concurrent-futures:1.1.0")
+    // Retrofit
+    implementation ("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation ("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    // Gson
+    implementation ("com.google.code.gson:gson:2.10.1")
+
+    // LiveData
+    implementation ("androidx.lifecycle:lifecycle-livedata:2.5.1")
+
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.activity)

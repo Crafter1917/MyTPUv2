@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">MyTPU</string>
+    <string name="schedule_updated">Обновление расписания</string>
+    <string name="new_schedule_available">Доступно новое расписание</string>
+    <string name="schedule_updates_channel">Обновления расписания</string>
+    <string name="schedule_updates_channel_desc">Уведомления об изменениях в расписании</string>
+
 </resources>

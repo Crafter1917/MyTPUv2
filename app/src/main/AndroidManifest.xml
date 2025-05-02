@@ -1,28 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
-
     <application
-        android:usesCleartextTraffic="true"
         android:name=".MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyTPU"
-        android:requestLegacyExternalStorage="true"
-
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
+        <service
+            android:name=".schedule.ScheduleUpdateService"
+            android:enabled="true"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -32,37 +36,37 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".DashboardActivity" />
+        <activity android:name=".moodle.DashboardActivity" />
         <activity
-            android:name=".ScheduleActivity"
-            android:screenOrientation="fullSensor"
+            android:name=".schedule.ScheduleActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
+            android:screenOrientation="fullSensor"
             tools:ignore="DiscouragedApi">
+
             <!-- Остальные атрибуты активности -->
         </activity>
         <activity
-            android:name=".CourseActivity"
+            android:name=".moodle.CourseActivity"
             android:exported="false"
-            android:launchMode="standard"/>
+            android:launchMode="standard" />
         <activity
-            android:name=".ModuleDetailActivity"
-            android:parentActivityName=".CourseActivity"
-            android:exported="false">
+            android:name=".moodle.ModuleDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".moodle.CourseActivity">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
-                android:value=".CourseActivity" />
+                android:value=".moodle.CourseActivity" />
         </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.example.mytpu.provider"
             android:exported="false"
             android:grantUriPermissions="true">
-        <meta-data
-            android:name="android.support.FILE_PROVIDER_PATHS"
-            android:resource="@xml/file_paths" />
-    </provider>
-
-
-</application>
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
 
 </manifest>

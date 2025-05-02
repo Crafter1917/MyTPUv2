@@ -1,4 +1,4 @@
-package com.example.mytpu;
+package com.example.mytpu.moodle;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
@@ -14,12 +14,16 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
+import com.example.mytpu.MainActivity;
+import com.example.mytpu.MyApplication;
+import com.example.mytpu.R;
+import com.example.mytpu.schedule.ScheduleActivity;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;

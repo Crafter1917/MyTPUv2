@@ -12,11 +12,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
+import com.example.mytpu.moodle.DashboardActivity;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -49,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
         passwordField = findViewById(R.id.password);
         loginButton = findViewById(R.id.loginButton);
 
+        // Initialize EncryptedSharedPreferences
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             sharedPreferences = EncryptedSharedPreferences.create(
@@ -58,14 +60,31 @@ public class MainActivity extends AppCompatActivity {
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
-        } catch (GeneralSecurityException | IOException e) {
-            showToast("Ошибка инициализации безопасного хранилища");
-            return;
+        } catch (Exception e) {
+            Log.e("MainActivity", "Error initializing secure preferences", e);
+            // Handle error - clear corrupted data and retry
+            try {
+                SharedPreferences preferences = getSharedPreferences("user_credentials", MODE_PRIVATE);
+                preferences.edit().clear().apply();
+                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+                sharedPreferences = EncryptedSharedPreferences.create(
+                        "user_credentials",
+                        masterKeyAlias,
+                        this,
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                );
+            } catch (Exception ex) {
+                Log.e("MainActivity", "Critical error initializing preferences", ex);
+                finish();
+            }
         }
 
         executor = Executors.newSingleThreadExecutor();
 
-        if (sharedPreferences.contains("username") && sharedPreferences.contains("password")) {
+        if (sharedPreferences != null &&
+                sharedPreferences.contains("username") &&
+                sharedPreferences.contains("password")) {
             executor.execute(this::autoLogin);
         }
 
@@ -168,30 +187,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveCredentials(String username, String password, String token) {
-        try {
-            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-            SharedPreferences sharedPreferences = EncryptedSharedPreferences.create(
-                    "user_credentials",
-                    masterKeyAlias,
-                    this,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            );
-
+        if (sharedPreferences != null) {
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putString("username", username);
             editor.putString("password", password);
             editor.putString("token", token);
             editor.apply();
-
-            // Также обновляем токен в MyApplication
-            ((MyApplication) getApplication()).setAuthToken(token);
-        } catch (Exception e) {
-            Log.e("MainActivity", "Error saving credentials", e);
         }
+        ((MyApplication) getApplication()).setAuthToken(token);
     }
 
     private void autoLogin() {
+        if (sharedPreferences == null) return;
+
         String username = sharedPreferences.getString("username", null);
         String password = sharedPreferences.getString("password", null);
 

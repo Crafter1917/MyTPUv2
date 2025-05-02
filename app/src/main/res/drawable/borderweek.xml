@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:tools="http://schemas.android.com/tools"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    tools:ignore="ExtraText">
+    <solid android:color="#ffaaff"/> <!-- Цвет фона, по умолчанию -->
+    <corners android:radius="16dp"/> <!-- Радиус скругления углов -->
+
+
+</shape>

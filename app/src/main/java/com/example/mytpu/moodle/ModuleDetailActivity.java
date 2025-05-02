@@ -1,4 +1,4 @@
-package com.example.mytpu;
+package com.example.mytpu.moodle;
 
 import static android.text.Html.fromHtml;
 
@@ -35,6 +35,8 @@ import androidx.core.content.FileProvider;
 import androidx.core.text.HtmlCompat;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
+
+import com.example.mytpu.R;
 
 import org.json.JSONArray;
 import org.json.JSONException;

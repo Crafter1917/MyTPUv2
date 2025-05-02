@@ -1,4 +1,4 @@
-package com.example.mytpu;
+package com.example.mytpu.moodle;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -14,6 +14,10 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
+
+import com.example.mytpu.MainActivity;
+import com.example.mytpu.MyApplication;
+import com.example.mytpu.R;
 
 import org.json.JSONArray;
 import org.json.JSONException;

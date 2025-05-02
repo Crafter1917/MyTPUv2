@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="textview">TextView</string>
+    <string name="schedule_updated">Обновление расписания</string>
+    <string name="new_schedule_available">Доступно новое расписание</string>
+    <string name="schedule_updates_channel">Обновления расписания</string>
+    <string name="schedule_updates_channel_desc">Уведомления об изменениях в расписании</string>
 </resources>

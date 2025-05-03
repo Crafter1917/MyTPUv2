@@ -6,8 +6,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:name=".MyApplication"
@@ -22,10 +25,7 @@
         android:theme="@style/Theme.MyTPU"
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
-        <service
-            android:name=".schedule.ScheduleUpdateService"
-            android:enabled="true"
-            android:exported="false" />
+
 
         <activity
             android:name=".MainActivity"
@@ -40,8 +40,9 @@
         <activity
             android:name=".schedule.ScheduleActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
-            android:screenOrientation="fullSensor"
-            tools:ignore="DiscouragedApi">
+            android:screenOrientation="portrait"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity"
+            android:theme="@style/Theme.MyTPU" >
 
             <!-- Остальные атрибуты активности -->
         </activity>

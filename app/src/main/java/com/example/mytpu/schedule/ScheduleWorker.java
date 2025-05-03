@@ -47,11 +47,13 @@ public class ScheduleWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.d(TAG, "Starting schedule update check...");
-
-        String offlineData = loadOfflineSchedule();
-        checkForUpdates(offlineData);
-        return Result.success();
+        try {Log.d(TAG, "Starting schedule update check...");
+            String offlineData = loadOfflineSchedule();
+            checkForUpdates(offlineData);
+            return Result.success();
+            } catch (Exception e) {
+                return Result.retry(); // Повторить через некоторое время
+        }
     }
 
     private void checkForUpdates(String currentData) {

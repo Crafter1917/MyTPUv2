@@ -4,5 +4,13 @@
     <string name="new_schedule_available">Доступно новое расписание</string>
     <string name="schedule_updates_channel">Обновления расписания</string>
     <string name="schedule_updates_channel_desc">Уведомления об изменениях в расписании</string>
-
+    <string-array name="week_days">
+        <item>Понедельник</item>
+        <item>Вторник</item>
+        <item>Среда</item>
+        <item>Четверг</item>
+        <item>Пятница</item>
+        <item>Суббота</item>
+        <item>Воскресенье</item>
+    </string-array>
 </resources>

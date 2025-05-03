@@ -1,7 +1,8 @@
 package com.example.mytpu.schedule;
 
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
+import android.graphics.Typeface;
+import android.util.TypedValue;
+import android.view.Gravity;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -10,6 +11,8 @@ import android.os.Environment;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.ViewGroup;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -18,8 +21,6 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewParent;
-import android.view.ViewTreeObserver;
 import android.view.inputmethod.EditorInfo;
 import android.widget.*;
 import android.graphics.Rect;
@@ -31,7 +32,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
-import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
@@ -40,6 +40,8 @@ import java.io.IOException;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -51,23 +53,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import android.animation.ObjectAnimator;
-import android.view.animation.OvershootInterpolator;
+
 import com.example.mytpu.R;
 
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final int DAYS_IN_WEEK = 7;
     private static final int WEEKS_IN_YEAR = 52;
-    private static final int[] DAY_IDS = {
-            R.id.scheduleContainerMonday,
-            R.id.scheduleContainerTuesday,
-            R.id.scheduleContainerWednesday,
-            R.id.scheduleContainerThursday,
-            R.id.scheduleContainerFriday,
-            R.id.scheduleContainerSaturday,
-            R.id.scheduleContainerSunday
-    };
+    // В классе ScheduleActivity добавьте:
+    private LinearLayout scheduleContainer;
+    private int lastSelectedWeek = -1;
+    private boolean isScrollingRight = true;
     private int lastWheelWeek = -1;
     private int lastWheelYear = -1;
     private AutoCompleteTextView searchField;
@@ -75,8 +71,6 @@ public class ScheduleActivity extends AppCompatActivity {
     private boolean isLoading = false;
     private boolean[] hasLessons = new boolean[DAYS_IN_WEEK];
     private boolean clearData = false;
-    private LinearLayout scheduleContainer;
-    private TextView dataPrevious, currentData, dataNext, compactCurrentDate;
     private OkHttpClient client;
     private ExecutorService executor;
     private int selectedYear, selectedWeek;
@@ -104,20 +98,21 @@ public class ScheduleActivity extends AppCompatActivity {
     private final ConcurrentHashMap<String, List<LessonData>> groupedLessonsMap = new ConcurrentHashMap<>();
     private final Object lock = new Object(); // Добавить объект для синхронизации
     private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
-    private static final int[] DAY_HEADER_IDS = {
-            R.id.day_header1, // Понедельник
-            R.id.day_header2, // Вторник
-            R.id.day_header3, // Среда
-            R.id.day_header4, // Четверг
-            R.id.day_header5, // Пятница
-            R.id.day_header6, // Суббота
-            R.id.day_header7  // Воскресенье
-    };
+    private List<CardView> dayCards = new ArrayList<>();
+    private List<TextView> dayHeaders = new ArrayList<>();
+    private List<LinearLayout> lessonContainers = new ArrayList<>();
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_schedule);
+        scheduleContainer = findViewById(R.id.scheduleContainer);
+        if (scheduleContainer == null) {
+            Log.e(TAG, "scheduleContainer not found!");
+            return;
+        }
         File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
         if (!documentsDir.exists()) documentsDir.mkdirs();
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -130,6 +125,7 @@ public class ScheduleActivity extends AppCompatActivity {
         searchCard = findViewById(R.id.searchCard);
         restoreLastSearch(); // ← Добавьте вызов здесь
         updateGroupsTextView(currentSearchQuery);
+        createDayCards();
         initViews();
         initHttpClient();
         loadInitialWeek();
@@ -158,6 +154,7 @@ public class ScheduleActivity extends AppCompatActivity {
             // Возвращаем insets для дальнейшей обработки
             return insets;
         });
+
         // Всегда загружайте JSON заново
         searchCard.post(() -> {
             originalCardWidth = searchCard.getWidth();
@@ -183,6 +180,148 @@ public class ScheduleActivity extends AppCompatActivity {
         setupCurrentDateButton();
         setupSearchField();
         setupWorkManager();
+    }
+
+    private void animateScheduleTransition(boolean scrollRight) {
+        int outAnim = scrollRight ? R.anim.slide_left_out : R.anim.slide_right_out;
+        int inAnim = scrollRight ? R.anim.slide_right_in : R.anim.slide_left_in;
+
+        // Сохраняем позицию скролла
+        final ScrollView scrollView = findViewById(R.id.scrollView);
+        final int scrollY = scrollView.getScrollY();
+
+        // Анимация исчезновения
+        Animation out = AnimationUtils.loadAnimation(this, outAnim);
+        out.setAnimationListener(new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {}
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                // Обновляем данные
+                updateDates();
+                updateDayDates();
+                clearScheduleContainers();
+                parseSchedule(jsonDataOfSite);
+
+                // Анимация появления
+                Animation in = AnimationUtils.loadAnimation(ScheduleActivity.this, inAnim);
+                in.setAnimationListener(new Animation.AnimationListener() {
+                    @Override
+                    public void onAnimationStart(Animation animation) {}
+
+                    @Override
+                    public void onAnimationEnd(Animation animation) {
+                        scrollView.post(() -> scrollView.scrollTo(0, scrollY));
+                    }
+
+                    @Override
+                    public void onAnimationRepeat(Animation animation) {}
+                });
+                scheduleContainer.startAnimation(in);
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {}
+        });
+
+        scheduleContainer.startAnimation(out);
+    }
+    private void createDayCards() {
+        Log.d(TAG, "Creating day cards...");
+
+        scheduleContainer.removeAllViews();
+        dayCards.clear();
+        dayHeaders.clear();
+        lessonContainers.clear();
+
+        String[] days = getResources().getStringArray(R.array.week_days);
+
+        for (int i = 0; i < DAYS_IN_WEEK; i++) {
+            // 1. Создаем CardView
+            CardView card = new CardView(this);
+            LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            );
+            cardParams.setMargins(0, dpToPx(8), 0, dpToPx(8));
+            card.setLayoutParams(cardParams);
+            card.setCardElevation(dpToPx(4));
+            card.setRadius(dpToPx(16));
+            card.setContentPadding(0, 0, 0, 0); // Убираем стандартные отступы
+
+            // 2. Создаем основной контейнер
+            LinearLayout mainContainer = new LinearLayout(this);
+            mainContainer.setOrientation(LinearLayout.VERTICAL);
+            mainContainer.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+            mainContainer.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
+
+            // 3. Создаем заголовок
+            LinearLayout headerContainer = new LinearLayout(this);
+            headerContainer.setOrientation(LinearLayout.HORIZONTAL);
+            headerContainer.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+
+            // Название дня
+            TextView dayTitle = new TextView(this);
+            dayTitle.setId(View.generateViewId());
+            dayTitle.setText(days[i]);
+            dayTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            dayTitle.setTypeface(null, Typeface.BOLD);
+            dayTitle.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+
+            // Дата
+            TextView dateText = new TextView(this);
+            dateText.setId(View.generateViewId());
+            LinearLayout.LayoutParams dateParams = new LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1
+            );
+            dateText.setLayoutParams(dateParams);
+            dateText.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            dateText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            dateText.setTypeface(null, Typeface.BOLD);
+            dateText.setPadding(0, 0, 0, dpToPx(8)); // Добавляем отступ снизу
+
+            headerContainer.addView(dayTitle);
+            headerContainer.addView(dateText);
+
+            // 4. Контейнер для уроков
+            LinearLayout lessonsContainer = new LinearLayout(this);
+            lessonsContainer.setOrientation(LinearLayout.VERTICAL);
+            lessonsContainer.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+
+            // Собираем всю структуру
+            mainContainer.addView(headerContainer);
+            mainContainer.addView(lessonsContainer);
+            card.addView(mainContainer);
+
+            // Сохраняем ссылки
+            dayCards.add(card);
+            dayHeaders.add(dateText);
+            lessonContainers.add(lessonsContainer);
+
+            // Стилизация
+            scheduleContainer.addView(card);
+
+            Log.d(TAG, "Added card for day: " + days[i]);
+        }
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
     }
 
     private void setupWeekWheel() {
@@ -244,7 +383,6 @@ public class ScheduleActivity extends AppCompatActivity {
             @Override
             public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                    // Получаем центральный элемент
                     View centerView = layoutManager.findCenterView();
                     if (centerView == null) return;
 
@@ -254,27 +392,21 @@ public class ScheduleActivity extends AppCompatActivity {
                     if (position >= 0 && position < weekList.size()) {
                         WeekWheelAdapter.WeekItem selected = weekList.get(position);
 
-                        // Проверка, изменились ли неделя/год
-                        if (selected.weekNumber != lastWheelWeek || selected.year != lastWheelYear) {
-                            // Обновляем выбранные значения
+                        // Определяем направление скролла
+                        if (lastSelectedWeek != -1) {
+                            isScrollingRight = selected.weekNumber > lastSelectedWeek;
+                        }
+                        lastSelectedWeek = selected.weekNumber;
+
+                        if (selected.weekNumber != selectedWeek || selected.year != selectedYear) {
+                            // Запускаем анимацию
+                            animateScheduleTransition(isScrollingRight);
+
                             selectedWeek = selected.weekNumber;
                             selectedYear = selected.year;
                             lastWheelWeek = selectedWeek;
                             lastWheelYear = selectedYear;
                             clearData = true;
-
-                            // Сохраняем текущую позицию скролла
-                            ScrollView scrollView = findViewById(R.id.scrollView);
-                            int scrollY = scrollView.getScrollY();
-
-                            // Обновляем расписание
-                            updateDates();
-                            updateDayDates();
-                            clearScheduleContainers();
-                            parseSchedule(jsonDataOfSite);
-
-                            // Восстанавливаем позицию скролла
-                            scrollView.post(() -> scrollView.scrollTo(0, scrollY));
                         }
                     }
                 }
@@ -298,7 +430,6 @@ public class ScheduleActivity extends AppCompatActivity {
         }
         return weeks;
     }
-
 
     private void setupCurrentDateButton() {
         currentDateButton.setOnClickListener(v -> {
@@ -327,8 +458,6 @@ public class ScheduleActivity extends AppCompatActivity {
             });
         });
     }
-
-
 
     private void restoreLastSearch() {
         String lastSearch = sharedPreferences.getString(KEY_LAST_SEARCH, "");
@@ -468,10 +597,6 @@ public class ScheduleActivity extends AppCompatActivity {
             anim.setDuration(300);
             anim.start();
         });
-    }
-    // Вспомогательные методы
-    private int dpToPx(int dp) {
-        return (int) (dp * getResources().getDisplayMetrics().density);
     }
 
     private void showKeyboard() {
@@ -627,7 +752,17 @@ public class ScheduleActivity extends AppCompatActivity {
 
     private void updateSearchAdapter() {
         if (searchAdapter == null) return;
+        runOnUiThread(() -> {
+            if (searchAdapter != null && allGroups != null && allTeachers != null) {
+                List<String> suggestions = new ArrayList<>(allGroups);
+                suggestions.addAll(allTeachers);
+                Collections.sort(suggestions);
 
+                searchAdapter.clear();
+                searchAdapter.addAll(suggestions);
+                searchAdapter.notifyDataSetChanged();
+            }
+        });
         runOnUiThread(() -> {
             List<String> suggestions = new ArrayList<>();
 
@@ -658,14 +793,12 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void initViews() {
+
         scheduleContainer = findViewById(R.id.scheduleContainer);
         weekWheel = findViewById(R.id.weekWheel);
         currentDateButton = findViewById(R.id.currentDateButton);
-        dataPrevious = findViewById(R.id.dataPrevious);
-        currentData = findViewById(R.id.currentData);
-        compactCurrentDate = findViewById(R.id.compactCurrentDate);
-        dataNext = findViewById(R.id.dataNext);
         yearTextView = findViewById(R.id.tvYear);
+
     }
 
 
@@ -693,34 +826,68 @@ public class ScheduleActivity extends AppCompatActivity {
         updateDates();
     }
 
+    // 1. Обновленный метод загрузки данных
     private void loadSchedule() {
-        if (jsonDataOfSite != null) return;
+        if (jsonDataOfSite != null || isFinishing()) return;
+
         showLoading(true);
 
-        // Только загрузка данных без сохранения
         executor.execute(() -> {
-            try (Response response = client.newCall(new Request.Builder()
-                    .url(API_URL)
-                    .build()).execute()) {
+            int retryCount = 0;
+            final int MAX_RETRIES = 3;
+            Response response = null;
 
-                if (!response.isSuccessful()) {
-                    runOnUiThread(() -> showError("Ошибка загрузки: " + response.code()));
-                    return;
+            while (retryCount < MAX_RETRIES && !isFinishing()) {
+                try {
+                    Request request = new Request.Builder()
+                            .url(API_URL)
+                            .build();
+
+                    response = client.newCall(request).execute();
+
+                    if (!response.isSuccessful()) {
+                        throw new IOException("HTTP error: " + response.code());
+                    }
+
+                    ResponseBody body = response.body();
+                    if (body == null) throw new IOException("Empty response body");
+
+                    final String rawData = body.string();
+
+                    // Валидация JSON перед сохранением
+                    try {
+                        new JSONObject(rawData); // Простая проверка структуры
+                    } catch (JSONException e) {
+                        throw new IOException("Invalid JSON format");
+                    }
+
+                    runOnUiThread(() -> {
+                        jsonDataOfSite = rawData;
+                        processDataInBackground(jsonDataOfSite);
+                    });
+
+                    break; // Успешная загрузка
+
+                } catch (IOException e) {
+                    retryCount++;
+                    final String errorMsg = "Attempt " + retryCount + " failed: " + e.getMessage();
+                    Log.e(TAG, errorMsg);
+
+                    int finalRetryCount = retryCount;
+                    runOnUiThread(() -> {
+                        if (finalRetryCount >= MAX_RETRIES) {
+                            showError("Ошибка загрузки данных");
+                            showLoading(false);
+                        }
+                    });
+
+                    if (retryCount < MAX_RETRIES) {
+                        try { Thread.sleep(2000); }
+                        catch (InterruptedException ie) { break; }
+                    }
+                } finally {
+                    if (response != null) response.close();
                 }
-
-                String responseData = response.body().string();
-                jsonDataOfSite = responseData;
-
-                runOnUiThread(() -> {
-                    processDataInBackground(responseData);
-                    updateGroupsTextView(currentSearchQuery);
-                    updateSearchAdapter();
-                });
-
-            } catch (IOException e) {
-                runOnUiThread(() -> showError("Ошибка подключения: " + e.getMessage()));
-            } finally {
-                runOnUiThread(() -> showLoading(false));
             }
         });
     }
@@ -731,24 +898,19 @@ public class ScheduleActivity extends AppCompatActivity {
                 JSONObject root = new JSONObject(jsonData);
                 JSONArray faculties = root.optJSONArray("faculties");
 
-                // Всегда вызываем collectSearchData, даже если faculties null
+                // Сбор данных для поиска
                 collectSearchData(faculties != null ? faculties : new JSONArray());
 
-                // Обновляем адаптер в UI потоке после сбора данных
                 runOnUiThread(() -> {
+                    if (isFinishing()) return;
                     updateSearchAdapter();
                     updateGroupsTextView(currentSearchQuery);
-                    Log.d(TAG, "Адаптер обновлен. Элементов: " + searchAdapter.getCount());
+                    parseSchedule(jsonData); // Запуск парсинга после подготовки данных
                 });
 
-                // Парсим расписание только если есть поисковый запрос
-                if (!currentSearchQuery.isEmpty()) {
-                    parseSchedule(jsonData);
-                }
-
             } catch (JSONException e) {
-                Log.e(TAG, "JSON Error: ", e);
-                runOnUiThread(() -> showError("Ошибка данных: " + e.getMessage()));
+                Log.e(TAG, "Data processing error: " + e.getMessage());
+                runOnUiThread(() -> showError("Ошибка формата данных"));
             }
         });
     }
@@ -763,171 +925,151 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void updateDayVisibility() {
-        runOnUiThread(() -> {
-            Calendar calendar = Calendar.getInstance();
-            int currentDay = (calendar.get(Calendar.DAY_OF_WEEK) - 2);
-            if (currentDay < 0) currentDay = 6;
+        int activeColor = ContextCompat.getColor(this, R.color.activeDayBackground);
+        int normalColor = ContextCompat.getColor(this, R.color.cardBackground);
 
-            for (int i = 0; i < DAY_IDS.length; i++) {
-                LinearLayout dayContainer = findViewById(DAY_IDS[i]);
-                if (dayContainer != null) {
-                    // Проверяем наличие уроков
-                    boolean hasLessonsInDay = false;
-                    for (int j = 0; j < dayContainer.getChildCount(); j++) {
-                        View child = dayContainer.getChildAt(j);
-                        if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
-                            hasLessonsInDay = true;
-                            break;
-                        }
-                    }
-                    hasLessons[i] = hasLessonsInDay;
+        Calendar calendar = Calendar.getInstance();
+        int currentDay = (calendar.get(Calendar.DAY_OF_WEEK) - 2);
+        if (currentDay < 0) currentDay = 6;
 
-                    // Обновляем видимость родительского CardView
-                    ViewParent parent = dayContainer.getParent();
-                    if (parent instanceof CardView) {
-                        CardView dayCard = (CardView) parent;
-                        dayCard.setVisibility(hasLessonsInDay ? View.VISIBLE : View.GONE);
+        for (int i = 0; i < dayCards.size(); i++) {
+            CardView card = dayCards.get(i);
+            if (card == null) continue;
 
-                        // Обновляем стиль для текущего дня
-                        boolean isToday = (i == currentDay) && isCurrentWeek();
-                        // В updateDayVisibility() используем стандартные методы CardView
-                        if (isToday) {
-                            dayCard.setCardBackgroundColor(ContextCompat.getColor(this, R.color.activeDayBackground));
-                            dayCard.setCardElevation(8f); // Используем elevation вместо stroke
-                        } else {
-                            dayCard.setCardBackgroundColor(ContextCompat.getColor(this, R.color.cardBackground));
-                            dayCard.setCardElevation(2f);
-                        }
-                    }
-                }}});
+            boolean hasLesson = hasLessons[i];
+            boolean isToday = (i == currentDay) && isCurrentWeek();
+
+            card.setVisibility(hasLesson ? View.VISIBLE : View.GONE);
+
+            if (isToday) {
+                card.setCardBackgroundColor(activeColor);
+                card.setCardElevation(8f);
+            } else {
+                card.setCardBackgroundColor(normalColor);
+                card.setCardElevation(2f);
+            }
+        }
     }
 
     @SuppressLint("DefaultLocale")
     private void parseSchedule(String jsonData) {
-        if (jsonData == null || jsonData.trim().isEmpty()) {
-            Log.e(TAG, "JSON данных нет или пустой — пропускаем разбор расписания");
+        if (jsonData == null || jsonData.isEmpty()) {
+            Log.e(TAG, "parseSchedule: empty data");
             return;
         }
 
-        executor.execute(() -> { // Заменяем new Thread(...).start() на executor.execute
+        executor.execute(() -> {
             try {
                 JSONObject root = new JSONObject(jsonData);
-                JSONArray faculties = root.optJSONArray("faculties");
+                JSONArray faculties = root.getJSONArray("faculties");
 
-                runOnUiThread(() -> {
-                    if (clearData) {
-                        clearScheduleContainers();
-                        clearData = false;
-                    }
-                });
-
-                if (faculties != null) {
-                    synchronized (lock) {
-                        groupedLessonsMap.clear();
-                    }
+                synchronized (lock) {
+                    groupedLessonsMap.clear();
                     Arrays.fill(hasLessons, false);
 
                     for (int i = 0; i < faculties.length(); i++) {
-                        JSONObject faculty = faculties.optJSONObject(i);
-                        JSONArray groups = faculty != null ? faculty.optJSONArray("groups") : null;
-                        if (groups == null) continue;
+                        JSONObject faculty = faculties.getJSONObject(i);
+                        JSONArray groups = faculty.getJSONArray("groups");
 
                         for (int j = 0; j < groups.length(); j++) {
-                            JSONObject group = groups.optJSONObject(j);
-                            if (group == null) continue;
-
+                            JSONObject group = groups.getJSONObject(j);
                             processGroup(group);
                         }
                     }
-
-                    runOnUiThread(() -> {
-                        List<String> sortedKeys = new ArrayList<>(groupedLessonsMap.keySet());
-                        Collections.sort(sortedKeys, (k1, k2) -> {
-                            String[] parts1 = k1.split("\\|");
-                            String[] parts2 = k2.split("\\|");
-                            int dayCompare = Integer.compare(Integer.parseInt(parts1[0]), Integer.parseInt(parts2[0]));
-                            if (dayCompare != 0) return dayCompare;
-                            return parts1[1].compareTo(parts2[1]);
-                        });
-
-                        for (String key : sortedKeys) {
-                            addGroupedLessonsToUI(groupedLessonsMap.get(key));
-                        }
-                        updateDayVisibility();
-                        updateDayDates();
-                    });
                 }
+
+                runOnUiThread(() -> {
+                    updateDayDates();
+                    redrawScheduleUI();
+                });
+
             } catch (JSONException e) {
-                runOnUiThread(() -> showError("Ошибка разбора данных: " + e.getMessage()));
+                Log.e(TAG, "Schedule parsing failed: " + e.getMessage());
+                runOnUiThread(() -> showError("Ошибка расписания"));
             }
+        });
+    }
+    private void redrawScheduleUI() {
+        runOnUiThread(() -> {
+            clearScheduleContainers();
+
+            List<String> sortedKeys = new ArrayList<>(groupedLessonsMap.keySet());
+            Collections.sort(sortedKeys, (k1, k2) -> {
+                String[] p1 = k1.split("\\|");
+                String[] p2 = k2.split("\\|");
+
+                int dayCompare = Integer.compare(Integer.parseInt(p1[0]), Integer.parseInt(p2[0]));
+                if (dayCompare != 0) return dayCompare;
+
+                try {
+                    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
+                    Date t1 = sdf.parse(p1[1].split(" - ")[0]);
+                    Date t2 = sdf.parse(p2[1].split(" - ")[0]);
+                    return t1.compareTo(t2);
+                } catch (ParseException e) {
+                    return 0;
+                }
+            });
+
+            for (String key : sortedKeys) {
+                addGroupedLessonsToUI(groupedLessonsMap.get(key));
+            }
+
+            updateDayVisibility();
         });
     }
 
     private void addGroupedLessonsToUI(List<LessonData> lessons) {
-        // Проверяем, что список уроков не null и не пустой
         if (lessons == null || lessons.isEmpty()) return;
 
-        // Сортируем уроки по времени начала
-        Collections.sort(lessons, (l1, l2) -> {
-            String time1 = l1.time.split(" - ")[0];
-            String time2 = l2.time.split(" - ")[0];
-            return time1.compareTo(time2);
-        });
-
         runOnUiThread(() -> {
-            LessonData firstLesson = lessons.get(0);
-            LinearLayout container = getDayContainer(firstLesson.weekday);
-            if (container == null) return;
+            try {
+                LessonData firstLesson = lessons.get(0);
+                int dayIndex = firstLesson.weekday - 1;
 
-            String uniqueKey = firstLesson.weekday + "|" + firstLesson.time;
+                if (dayIndex < 0 || dayIndex >= lessonContainers.size()) return;
 
-            // Проверяем, не добавлена ли уже эта пара
-            if (!paraContainers.containsKey(uniqueKey)) {
-                CardView paraCard = createParaCard(firstLesson.time);
-                paraCard.setLayoutParams(new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                ));
-                Animation anim = AnimationUtils.loadAnimation(this, R.anim.wheel_scroll_anim);
-                paraCard.startAnimation(anim);
-                container.addView(paraCard);
-                LinearLayout lessonContainer = paraCard.findViewById(R.id.LinearLayout_para);
-                paraContainers.put(uniqueKey, lessonContainer);
+                LinearLayout container = lessonContainers.get(dayIndex);
 
-                // Добавляем все уроки для этой пары
+                CardView paraCard = createParaCard(firstLesson.time, determineParaNumber(firstLesson.time));
+
+                // Получаем контейнер из тегов
+                LinearLayout lessonContainer = (LinearLayout) paraCard.getTag();
+
                 for (LessonData lesson : lessons) {
-                    View lessonView = createLessonCard(
+                    CardView lessonCard = createLessonCard(
                             lesson.subgroups > 0 ? "Подгруппа: " + lesson.subgroups : "",
                             lesson.subject,
-                            lesson.time,
                             lesson.audience,
                             lesson.type,
                             lesson.teacher
                     );
-                    lessonView.setLayoutParams(new LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                    ));
-                    lessonView.startAnimation(AnimationUtils.loadAnimation(this, R.anim.wheel_scroll_anim));
-                    lessonContainer.addView(lessonView);
+                    lessonContainer.addView(lessonCard);
                 }
+
+                container.addView(paraCard);
+                hasLessons[dayIndex] = true;
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error adding lessons: " + e.getMessage());
             }
         });
     }
 
     private void updateDayDates() {
-        SimpleDateFormat sdf = new SimpleDateFormat("d MMMM", new Locale("ru")); // Формат: "21 мая"
+        if (dayHeaders.isEmpty() || dayHeaders.size() < DAYS_IN_WEEK) return;
+
+
+        SimpleDateFormat sdf = new SimpleDateFormat("d MMMM", new Locale("ru"));
         Calendar cal = Calendar.getInstance();
         cal.setFirstDayOfWeek(Calendar.MONDAY);
         cal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
         cal.set(Calendar.YEAR, selectedYear);
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
 
-        for (int i = 0; i < DAY_HEADER_IDS.length; i++) {
-            TextView dateHeader = findViewById(DAY_HEADER_IDS[i]);
-            if (dateHeader != null) {
-                String dateString = sdf.format(cal.getTime());
-                dateHeader.setText(dateString);
+        for (TextView header : dayHeaders) {
+            if (header != null) {
+                header.setText(sdf.format(cal.getTime()));
                 cal.add(Calendar.DAY_OF_MONTH, 1);
             }
         }
@@ -935,39 +1077,33 @@ public class ScheduleActivity extends AppCompatActivity {
 
     private void clearScheduleContainers() {
         runOnUiThread(() -> {
-            for (int i = 1; i <= DAYS_IN_WEEK; i++) {
-                LinearLayout container = getDayContainer(i);
-                if (container != null) {
-                    // Удаляем только уроки
-                    for (int j = container.getChildCount() - 1; j >= 0; j--) {
-                        View child = container.getChildAt(j);
-                        if (child instanceof CardView && "dynamicParaCard".equals(child.getTag())) {
-                            container.removeViewAt(j);
-                        }
-                    }
-                }
+            for (LinearLayout container : lessonContainers) {
+                container.removeAllViews();
             }
             paraContainers.clear();
-            updateDayVisibility(); // Обновляем видимость
+            updateDayVisibility();
         });
     }
 
     private void processGroup(JSONObject group) throws JSONException {
-        String groupName = group.optString("name", "").trim();
-        boolean isGroupMatch = groupName.equalsIgnoreCase(currentSearchQuery);
+        String groupName = group.getString("name").trim();
+        boolean groupMatch = groupName.equalsIgnoreCase(currentSearchQuery);
 
         JSONArray lessons = group.getJSONArray("lessons");
+
         for (int k = 0; k < lessons.length(); k++) {
             JSONObject lesson = lessons.getJSONObject(k);
 
-            if (isGroupMatch || checkTeacherInLesson(lesson)) {
+            if (groupMatch || checkTeacherInLesson(lesson)) {
                 LessonData lessonData = processLesson(lesson);
                 if (lessonData != null) {
                     String key = lessonData.weekday + "|" + lessonData.time;
-                    if (!groupedLessonsMap.containsKey(key)) {
-                        groupedLessonsMap.put(key, new ArrayList<>());
+                    synchronized (lock) {
+                        if (!groupedLessonsMap.containsKey(key)) {
+                            groupedLessonsMap.put(key, new ArrayList<>());
+                        }
+                        groupedLessonsMap.get(key).add(lessonData);
                     }
-                    groupedLessonsMap.get(key).add(lessonData);
                 }
             }
         }
@@ -995,44 +1131,46 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private LessonData processLesson(JSONObject lesson) throws JSONException {
-        JSONObject dateObj = lesson.optJSONObject("date");
-        if (dateObj == null) return null;
-
-        String startDateStr = dateObj.optString("start", "");
         try {
-            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
-            Date startDate = sdf.parse(startDateStr);
-            if (startDate == null) return null;
+            JSONObject date = lesson.getJSONObject("date");
+            String startDateStr = date.getString("start");
+            int weekday = date.getInt("weekday");
 
-            Calendar lessonCalendar = Calendar.getInstance();
-            lessonCalendar.setTime(startDate);
+            // Парсинг даты
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy");
+            Date lessonDate = sdf.parse(startDateStr);
 
-            Calendar selectedCalendar = Calendar.getInstance();
-            selectedCalendar.set(Calendar.WEEK_OF_YEAR, selectedWeek);
-            selectedCalendar.set(Calendar.YEAR, selectedYear);
+            // Проверка совпадения недели
+            Calendar lessonCal = Calendar.getInstance();
+            lessonCal.setTime(lessonDate);
 
-            if (lessonCalendar.get(Calendar.WEEK_OF_YEAR) != selectedCalendar.get(Calendar.WEEK_OF_YEAR) ||
-                    lessonCalendar.get(Calendar.YEAR) != selectedCalendar.get(Calendar.YEAR)) {
+            Calendar selectedCal = Calendar.getInstance();
+            selectedCal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+            selectedCal.set(Calendar.YEAR, selectedYear);
+
+            if (lessonCal.get(Calendar.WEEK_OF_YEAR) != selectedCal.get(Calendar.WEEK_OF_YEAR) ||
+                    lessonCal.get(Calendar.YEAR) != selectedCal.get(Calendar.YEAR)) {
                 return null;
             }
 
-            int weekday = dateObj.optInt("weekday", -1);
-            if (weekday < 1 || weekday > DAYS_IN_WEEK) return null;
-
-            JSONObject time = lesson.optJSONObject("time");
-            String timeText = (time != null ? time.optString("start", "00:00") : "00:00") + " - " +
-                    (time != null ? time.optString("end", "00:00") : "00:00");
+            // Время занятия
+            JSONObject time = lesson.getJSONObject("time");
+            String startTime = time.getString("start");
+            String endTime = time.getString("end");
+            String lessonTime = startTime + " - " + endTime;
 
             return new LessonData(
-                    lesson.optString("subject", "Неизвестный предмет"),
-                    lesson.optString("type", "Неизвестный тип"),
+                    lesson.getString("subject"),
+                    lesson.getString("type"),
                     lesson.optInt("subgroups", 0),
-                    timeText,
-                    getAudience(lesson.optJSONArray("audiences")),
-                    getTeacher(lesson.optJSONArray("teachers")),
+                    lessonTime, // <--- Передаем время
+                    getAudience(lesson.getJSONArray("audiences")),
+                    getTeacher(lesson.getJSONArray("teachers")),
                     weekday
             );
-        } catch (ParseException e) {
+
+        } catch (ParseException | JSONException e) {
+            Log.w(TAG, "Skipping invalid lesson: " + e.getMessage());
             return null;
         }
     }
@@ -1049,32 +1187,179 @@ public class ScheduleActivity extends AppCompatActivity {
         return teacherObj != null ? teacherObj.optString("name", "Неизвестный") : "Неизвестный";
     }
 
-    private CardView createParaCard(String time) {
-        CardView card = (CardView) LayoutInflater.from(this).inflate(R.layout.para_card_template, null);
-        ((TextView) card.findViewById(R.id.para)).setText(determineParaNumber(time) + " пара");
-        card.setTag("dynamicParaCard"); // Убедитесь, что тег установлен
+    private CardView createParaCard(String time, int paraNumber) {
+        // Создаем корневой CardView
+        CardView card = new CardView(this);
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        cardParams.setMargins(0, dpToPx(4), 0, dpToPx(4));
+        card.setLayoutParams(cardParams);
+        card.setCardElevation(dpToPx(1));
+        card.setRadius(dpToPx(6));
+        card.setContentPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.cardBackground));
+
+        // Основной контейнер
+        LinearLayout mainContainer = new LinearLayout(this);
+        mainContainer.setOrientation(LinearLayout.VERTICAL);
+        mainContainer.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        // Заголовок пары
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, 0, 0, dpToPx(4)); // Отступ снизу 4dp
+
+
+        // Левая часть - номер пары
+        LinearLayout leftPart = new LinearLayout(this);
+        leftPart.setOrientation(LinearLayout.VERTICAL);
+        leftPart.setLayoutParams(new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+        ));
+
+        TextView paraNumberView = new TextView(this);
+        paraNumberView.setText("Пара " + paraNumber);
+        paraNumberView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        paraNumberView.setTypeface(null, Typeface.BOLD);
+        paraNumberView.setTextColor(ContextCompat.getColor(this, R.color.primaryDarkColor));
+
+        leftPart.addView(paraNumberView);
+
+        // Правая часть - время
+        LinearLayout rightPart = new LinearLayout(this);
+        rightPart.setOrientation(LinearLayout.VERTICAL);
+        rightPart.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        rightPart.setGravity(Gravity.END);
+
+        TextView timeView = new TextView(this);
+        timeView.setText(time);
+        timeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        timeView.setTypeface(null, Typeface.BOLD);
+        timeView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+
+        rightPart.addView(timeView);
+
+        header.addView(leftPart);
+        header.addView(rightPart);
+
+        // Контейнер для уроков
+        LinearLayout lessonsContainer = new LinearLayout(this);
+        lessonsContainer.setOrientation(LinearLayout.VERTICAL);
+        lessonsContainer.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        lessonsContainer.setPadding(dpToPx(8), dpToPx(8), 0, 0);
+
+        mainContainer.addView(header);
+        mainContainer.addView(lessonsContainer);
+        card.addView(mainContainer);
+        card.setTag(lessonsContainer);
         return card;
     }
 
-    private CardView createLessonCard(String subgroups, String subject, String time,
+    private CardView createLessonCard(String subgroups, String subject,
                                       String audience, String type, String teacher) {
-        CardView card = (CardView) LayoutInflater.from(this).inflate(R.layout.lesson_card_template, null);
-        ((TextView) card.findViewById(R.id.para)).setText(subgroups);
-        ((TextView) card.findViewById(R.id.subject)).setText(subject);
-        ((TextView) card.findViewById(R.id.time)).setText(time);
-        ((TextView) card.findViewById(R.id.audiences)).setText(audience);
-        ((TextView) card.findViewById(R.id.lessonType)).setText(type);
-        ((TextView) card.findViewById(R.id.teachers)).setText(teacher);
-        return card;
-    }
+        CardView card = new CardView(this);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4)); // Отступы 4dp со всех сторон
+        card.setLayoutParams(params);
+        card.setCardElevation(dpToPx(1));
+        card.setRadius(dpToPx(4));
+        card.setContentPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.lesson_card_background));
 
-    private LinearLayout getDayContainer(int weekday) {
-        int id = DAY_IDS[weekday - 1];
-        LinearLayout container = findViewById(id);
-        if (container == null) {
-            Log.e("GetDayContainer", "Container for day " + weekday + " not found (ID: " + id + ")");
+        LinearLayout mainContainer = new LinearLayout(this);
+        mainContainer.setOrientation(LinearLayout.VERTICAL);
+        mainContainer.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        // Верхняя часть
+        LinearLayout topPart = new LinearLayout(this);
+        topPart.setOrientation(LinearLayout.HORIZONTAL);
+        topPart.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        // Левая часть
+        LinearLayout leftPart = new LinearLayout(this);
+        leftPart.setOrientation(LinearLayout.VERTICAL);
+        leftPart.setLayoutParams(new LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+        ));
+
+        if (!subgroups.isEmpty()) {
+            TextView subgroupsView = new TextView(this);
+            subgroupsView.setText(subgroups);
+            subgroupsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            subgroupsView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            subgroupsView.setTypeface(null, Typeface.BOLD);
+            subgroupsView.setPadding(0, 0, 0, dpToPx(2));
+            leftPart.addView(subgroupsView);
         }
-        return container;
+
+        TextView subjectView = new TextView(this);
+        subjectView.setText(subject);
+        subjectView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        subjectView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        subjectView.setTypeface(null, Typeface.BOLD);
+        subjectView.setPadding(0, subgroups.isEmpty() ? 0 : dpToPx(2), 0, dpToPx(2));
+        leftPart.addView(subjectView);
+
+        if (!teacher.isEmpty()) {
+            TextView teacherView = new TextView(this);
+            teacherView.setText(teacher);
+            teacherView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            teacherView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            leftPart.addView(teacherView);
+        }
+
+        // Правая часть
+        TextView audienceView = new TextView(this);
+        audienceView.setText(audience);
+        audienceView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        audienceView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        audienceView.setGravity(Gravity.END);
+
+        topPart.addView(leftPart);
+        topPart.addView(audienceView);
+        mainContainer.addView(topPart);
+
+        // Нижняя часть
+        if (!type.isEmpty()) {
+            TextView typeView = new TextView(this);
+            typeView.setText(type);
+            typeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            typeView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            typeView.setPadding(0, dpToPx(4), 0, 0);
+            mainContainer.addView(typeView);
+        }
+
+        card.addView(mainContainer);
+        return card;
     }
 
     private boolean isCurrentWeek() {
@@ -1088,35 +1373,44 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void updateDates() {
-        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+        if ( yearTextView != null) {
+            yearTextView.setText(String.valueOf(selectedYear));
+        }
+
         Calendar cal = Calendar.getInstance();
         cal.set(Calendar.YEAR, selectedYear);
         cal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
 
-        currentData.setText(sdf.format(cal.getTime()));
-        compactCurrentDate.setText(currentData.getText());
-
-        cal.add(Calendar.WEEK_OF_YEAR, -1);
-        dataPrevious.setText(sdf.format(cal.getTime()));
-        yearTextView.setText(String.valueOf(selectedYear));
-        cal.add(Calendar.WEEK_OF_YEAR, 2);
-        dataNext.setText(sdf.format(cal.getTime()));
+        updateDayDates();
     }
 
-    private String determineParaNumber(String time) {
+    private int determineParaNumber(String time) {
         try {
             SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
-            Date startTime = sdf.parse(time.split(" - ")[0]);
+            String startTimeStr = time.split(" - ")[0];
+            Date startTime = sdf.parse(startTimeStr);
 
-            if (startTime.before(sdf.parse("10:05"))) return "1";
-            if (startTime.before(sdf.parse("11:55"))) return "2";
-            if (startTime.before(sdf.parse("14:20"))) return "3";
-            if (startTime.before(sdf.parse("16:05"))) return "4";
-            if (startTime.before(sdf.parse("17:50"))) return "5";
-            return "6";
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(startTime);
+
+            int hour = cal.get(Calendar.HOUR_OF_DAY);
+            int minute = cal.get(Calendar.MINUTE);
+
+            // Расписание пар по времени
+            if (hour == 8 && minute >= 30) return 1;
+            if (hour == 10 && minute <= 5) return 1;
+            if (hour == 10 && minute >= 20) return 2;
+            if (hour == 11 && minute <= 35) return 2;
+            if (hour == 12 && minute >= 45) return 3;
+            if (hour == 14 && minute <= 35) return 4;
+            if (hour == 16 && minute >= 10) return 4;
+            if (hour == 16 && minute <= 20) return 5;
+            if (hour == 17 && minute >= 55) return 5;
+            return 6;
+
         } catch (ParseException e) {
-            return "?";
+            return 0; // Некорректное время
         }
     }
 
@@ -1160,7 +1454,7 @@ public class ScheduleActivity extends AppCompatActivity {
         String subject;
         String type;
         int subgroups;
-        String time;
+        String time; // <--- Добавляем поле
         String audience;
         String teacher;
         int weekday;
@@ -1170,7 +1464,7 @@ public class ScheduleActivity extends AppCompatActivity {
             this.subject = subject;
             this.type = type;
             this.subgroups = subgroups;
-            this.time = time;
+            this.time = time; // <--- Инициализируем
             this.audience = audience;
             this.teacher = teacher;
             this.weekday = weekday;

@@ -9,5 +9,9 @@
     <color name="activeDayBackground">#E3F2FD</color>
     <color name="activeDayBorder">#2196F3</color>
     <color name="cardBackground">#FFFFFF</color>
-
+    <color name="primaryColor">#2196F3</color>
+    <color name="lesson_card_background">#FFFFFF</color>
+    <color name="textPrimary">#212121</color>
+    <color name="primaryDarkColor">#303F9F</color>
+    <color name="textSecondary">#757575</color>
 </resources>

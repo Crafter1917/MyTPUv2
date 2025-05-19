@@ -40,7 +40,7 @@ public class DashboardActivity extends AppCompatActivity {
 
     private static final String TAG = "DashboardActivity";
     private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
-
+    private Button mailButton;
     private LinearLayout recentcoursesContainer;
     private TextView welcomeTextView;
     private LinearLayout coursesContainer;
@@ -57,6 +57,8 @@ public class DashboardActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dashboard);
+        mailButton = findViewById(R.id.button_mail);
+        mailButton.setOnClickListener(v -> executor.execute(this::openMail));
 
         coursesContainer = findViewById(R.id.coursesContainer);
         welcomeTextView = findViewById(R.id.welcomeTextView);
@@ -95,7 +97,12 @@ public class DashboardActivity extends AppCompatActivity {
         logoutButton.setOnClickListener(v -> executor.execute(this::logout));
         scheduleButton.setOnClickListener(v -> executor.execute(this::schedule));
     }
-
+    private void openMail() {
+        runOnUiThread(() -> {
+            Intent intent = new Intent(DashboardActivity.this, com.example.mytpu.mailTPU.MailActivity.class);
+            startActivity(intent);
+        });
+    }
     private void loadUserData() {
         executor.execute(() -> {
             try {
@@ -169,18 +176,34 @@ public class DashboardActivity extends AppCompatActivity {
         coursesContainer.removeAllViews();
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-            sharedPreferences = EncryptedSharedPreferences.create(
+
+            // Основные учетные данные
+            SharedPreferences mainPrefs = EncryptedSharedPreferences.create(
                     "user_credentials",
                     masterKeyAlias,
                     this,
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
-            token = sharedPreferences.getString("token", null);
+
+            // Почтовые учетные данные в том же хранилище
+            SharedPreferences mailPrefs = EncryptedSharedPreferences.create(
+                    "mail_credentials",
+                    masterKeyAlias,
+                    this,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+
+            // Сохраняем токен Moodle и для почты
+            token = mainPrefs.getString("token", null);
+            mailPrefs.edit()
+                    .putString("mail_token", token)
+                    .apply();
 
         } catch (Exception e) {
             Log.e(TAG, "Error accessing secure storage", e);
-            showToast("Ошибка доступа к безопасному хранилищу");
+            showToast("Ошибка доступа к хранилищу");
             finish();
         }
         coursesContainer.removeAllViews();

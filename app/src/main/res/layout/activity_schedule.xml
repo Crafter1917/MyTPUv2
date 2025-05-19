@@ -21,13 +21,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+
+            android:paddingLeft="16dp"
+            android:paddingTop="8dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="8dp">
 
             <androidx.cardview.widget.CardView
                 android:id="@+id/searchCard"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:layout_margin="16dp"
                 app:cardCornerRadius="24dp"
                 app:cardElevation="4dp"
                 app:layout_constraintEnd_toEndOf="parent"
@@ -76,16 +80,16 @@
         </LinearLayout>
 
         <!-- Заголовок -->
-
         <ScrollView
             android:id="@+id/scrollView"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:background="@drawable/rounded_scroll_background"
-            android:clipToPadding="true"
+            android:contentDescription="@string/app_name"
             android:fillViewport="true"
-            android:padding="8dp">
+
+            >
 
             <!-- Основной контейнер расписания -->
             <LinearLayout
@@ -93,7 +97,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="8dp">
+                >
 
                 <LinearLayout
 
@@ -109,9 +113,9 @@
                         android:visibility="gone" />
 
 
-
                     <!-- Повторить CardView для других дней -->
                 </LinearLayout>
+
                 <TextView
                     android:id="@+id/dataPrevious"
                     android:layout_width="wrap_content"
@@ -127,50 +131,62 @@
 
         </ScrollView>
 
-
-        <!-- Год в верхней панели -->
-        <!-- В верхней части рядом с другими элементами -->
-
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="16dp">
-            >
+
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/tvYear"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentEnd="true"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/currentDateButton"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_centerHorizontal="true"
-                    android:text="Сегодня"
-                    android:textColor="#6200EA"
-                    android:textStyle="bold" />
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="2dp">
+
+                    <Button
+                        android:id="@+id/currentDateButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Сегодня"
+                        android:textColor="#6200EA"
+                        android:textStyle="bold" />
+
+                    <!-- Этот Space заполнит всё свободное пространство между кнопкой и текстом -->
+                    <Space
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/tvYear"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:paddingRight="8dp"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/weekWheel"
                     android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_height="wrap_content"
                     android:clipToPadding="false"
                     android:orientation="horizontal"
                     android:padding="8dp"
                     android:background="@drawable/border"
-                app:layoutManager="com.example.mytpu.schedule.WheelLayoutManager"
-                tools:ignore="SpeakableTextPresentCheck"
-                tools:listitem="@layout/item_week_wheel" />
+                    app:layoutManager="com.example.mytpu.schedule.WheelLayoutManager"
+                    tools:ignore="SpeakableTextPresentCheck"
+                    tools:listitem="@layout/item_week_wheel" />
 
             </LinearLayout>
 

@@ -59,7 +59,6 @@ import com.example.mytpu.R;
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final int DAYS_IN_WEEK = 7;
-    private static final int WEEKS_IN_YEAR = 52;
     // В классе ScheduleActivity добавьте:
     private LinearLayout scheduleContainer;
     private int lastSelectedWeek = -1;
@@ -432,30 +431,39 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void setupCurrentDateButton() {
+        currentDateButton = findViewById(R.id.currentDateButton);
         currentDateButton.setOnClickListener(v -> {
-            List<WeekWheelAdapter.WeekItem> weeks = generateWeeks();
-            wheelAdapter.setWeeks(weeks);
+            // Получаем текущую дату
+            Calendar today = Calendar.getInstance();
+            int currentWeek = today.get(Calendar.WEEK_OF_YEAR);
+            int currentYear = today.get(Calendar.YEAR);
 
-            int targetPosition = wheelAdapter.findCurrentWeekPosition();
+            // Находим позицию в адаптере
+            int targetPosition = -1;
+            List<WeekWheelAdapter.WeekItem> weeks = wheelAdapter.getWeeks();
+            for (int i = 0; i < weeks.size(); i++) {
+                WeekWheelAdapter.WeekItem item = weeks.get(i);
+                if (item.weekNumber == currentWeek && item.year == currentYear) {
+                    targetPosition = i;
+                    break;
+                }
+            }
 
-            lastWheelWeek = selectedWeek;
-            lastWheelYear = selectedYear;
+            if (targetPosition == -1) return;
 
-            clearData = true;
+            // Обновляем выбранные значения
+            selectedWeek = currentWeek;
+            selectedYear = currentYear;
 
-            weekWheel.post(() -> {
-                WheelLayoutManager layoutManager = (WheelLayoutManager) weekWheel.getLayoutManager();
-                layoutManager.scrollToPosition(targetPosition);
+            // Прокручиваем колесо
+            WheelLayoutManager layoutManager = (WheelLayoutManager) weekWheel.getLayoutManager();
+            layoutManager.smoothScrollToPosition(weekWheel, null, targetPosition);
 
-                // Подождём один кадр, потом центрируем
-                weekWheel.post(() -> {
-                    layoutManager.snapToCenter(); // <- это вручную
-                    updateDates();
-                    updateDayDates();
-                    clearScheduleContainers();
-                    parseSchedule(jsonDataOfSite);
-                });
-            });
+            // Принудительно обновляем расписание
+            updateDates();
+            updateDayDates();
+            clearScheduleContainers();
+            parseSchedule(jsonDataOfSite);
         });
     }
 
@@ -826,7 +834,6 @@ public class ScheduleActivity extends AppCompatActivity {
         updateDates();
     }
 
-    // 1. Обновленный метод загрузки данных
     private void loadSchedule() {
         if (jsonDataOfSite != null || isFinishing()) return;
 
@@ -1400,13 +1407,18 @@ public class ScheduleActivity extends AppCompatActivity {
             // Расписание пар по времени
             if (hour == 8 && minute >= 30) return 1;
             if (hour == 10 && minute <= 5) return 1;
+
             if (hour == 10 && minute >= 20) return 2;
             if (hour == 11 && minute <= 35) return 2;
+
             if (hour == 12 && minute >= 45) return 3;
-            if (hour == 14 && minute <= 35) return 4;
-            if (hour == 16 && minute >= 10) return 4;
-            if (hour == 16 && minute <= 20) return 5;
-            if (hour == 17 && minute >= 55) return 5;
+            if (hour == 14 && minute <= 20) return 3;
+
+            if (hour == 14 && minute >= 35) return 4;
+            if (hour == 16 && minute <= 10) return 4;
+
+            if (hour == 16 && minute >= 20) return 5;
+            if (hour == 17 && minute <= 55) return 5;
             return 6;
 
         } catch (ParseException e) {

@@ -12,5 +12,23 @@
         <item>Пятница</item>
         <item>Суббота</item>
         <item>Воскресенье</item>
+
     </string-array>
+    <string name="enter_message">Введите сообщение</string>
+    <string name="message_sent">Сообщение отправлено</string>
+    <string name="send_error">Ошибка отправки</string>
+    <string name="email_deleted">Письмо удалено</string>
+    <string name="delete_error">Ошибка удаления</string>
+    <string name="marked_unread">Помечено как непрочитанное</string>
+    <string name="mark_error">Ошибка пометки</string>
+    <string name="reply">Reply</string>
+    <string name="reply_all">Reply all</string>
+    <string name="forward">Forward</string>
+    <string name="more_actions">More</string>
+    <string name="write_reply">Type a reply...</string>
+    <string name="send">Send</string>
+    <string name="attachment_preview">Превью вложения</string>
+    <string name="view">Просмотреть</string>
+    <string name="download">Скачать</string>
+    <string name="fullscreen_image_desc">Full screen image</string>
 </resources>

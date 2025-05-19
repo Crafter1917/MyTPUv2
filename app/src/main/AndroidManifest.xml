@@ -24,8 +24,19 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyTPU"
         android:usesCleartextTraffic="true"
+        android:hardwareAccelerated="true"
         tools:targetApi="31">
 
+        <activity
+            android:name=".mailTPU.MailActivity"
+            android:label="Почта ТПУ"/>
+
+        <activity
+            android:name=".mailTPU.ComposeActivity"
+            android:label="Новое письмо"/>
+        <activity
+            android:name=".mailTPU.EmailDetailActivity"
+            android:label="Просмотр письма"/>
 
         <activity
             android:name=".MainActivity"
@@ -66,7 +77,7 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
+                android:resource="@xml/file_paths"/>
         </provider>
     </application>
 

@@ -1,5 +1,6 @@
 package com.example.mytpu.schedule;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Rect;
 import android.os.Handler;
@@ -59,6 +60,7 @@ public class WheelLayoutManager extends LinearLayoutManager {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public void onAttachedToWindow(@NonNull RecyclerView view) {
         super.onAttachedToWindow(view);
@@ -249,7 +251,16 @@ public class WheelLayoutManager extends LinearLayoutManager {
         LinearSmoothScroller smoothScroller = new LinearSmoothScroller(recyclerView.getContext()) {
             @Override
             public int calculateDtToFit(int viewStart, int viewEnd, int boxStart, int boxEnd, int snapPreference) {
-                return (boxStart + (boxEnd - boxStart) / 2) - (viewStart + (viewEnd - viewStart) / 2);
+                return (boxStart + (boxEnd - boxStart)/2) - (viewStart + (viewEnd - viewStart)/2);
+            }
+
+            @Override
+            protected void onStop() {
+                super.onStop();
+                // Вызываем обновление после завершения анимации
+                if (recyclerView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE) {
+                    notifyCenterItem();
+                }
             }
 
             @Override

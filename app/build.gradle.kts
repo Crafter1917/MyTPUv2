@@ -34,18 +34,21 @@ android {
 
 dependencies {
     // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
+    implementation ("commons-codec:commons-codec:1.15")
     implementation ("androidx.recyclerview:recyclerview:1.3.2")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation ("com.squareup.okhttp3:okhttp-urlconnection:4.11.0")
-    implementation ("com.squareup.okhttp3:logging-interceptor:4.11.0")
+    implementation ("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation ("org.jsoup:jsoup:1.15.4")
-    implementation ("androidx.recyclerview:recyclerview:1.2.1")
     implementation ("androidx.work:work-runtime:2.9.0")
     implementation ("androidx.concurrent:concurrent-futures:1.1.0")
     // Retrofit
+    implementation ("androidx.appcompat:appcompat:1.6.1")
+    implementation ("androidx.fragment:fragment-ktx:1.6.2")
     implementation ("com.squareup.retrofit2:retrofit:2.9.0")
     implementation ("com.squareup.retrofit2:converter-gson:2.9.0")
-
+    implementation ("androidx.cardview:cardview:1.0.0")
+    implementation ("com.github.bumptech.glide:glide:4.12.0")
     // Gson
     implementation ("com.google.code.gson:gson:2.10.1")
 
@@ -60,6 +63,8 @@ dependencies {
     implementation(libs.media3.common)
     implementation(libs.firebase.crashlytics.buildtools)
     implementation(libs.cronet.embedded)
+    implementation(libs.swiperefreshlayout)
+    implementation(libs.browser)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
 }

@@ -11,6 +11,8 @@ securityCrypto = "1.0.0"
 media3Common = "1.5.1"
 firebaseCrashlyticsBuildtools = "3.0.2"
 cronetEmbedded = "119.6045.31"
+swiperefreshlayout = "1.1.0"
+browser = "1.8.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -24,6 +26,8 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3Common" }
 firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
 cronet-embedded = { group = "org.chromium.net", name = "cronet-embedded", version.ref = "cronetEmbedded" }
+swiperefreshlayout = { group = "androidx.swiperefreshlayout", name = "swiperefreshlayout", version.ref = "swiperefreshlayout" }
+browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

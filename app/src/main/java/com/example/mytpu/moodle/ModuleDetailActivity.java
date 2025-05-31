@@ -2,16 +2,21 @@ package com.example.mytpu.moodle;
 
 import static android.text.Html.fromHtml;
 
+import androidx.cardview.widget.CardView;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.work.WorkInfo;
 
+import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
@@ -22,11 +27,16 @@ import android.os.Looper;
 import android.text.Html;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.ImageSpan;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
+import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -41,6 +51,10 @@ import com.example.mytpu.R;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -50,8 +64,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.security.GeneralSecurityException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -61,7 +78,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class ModuleDetailActivity extends AppCompatActivity {
-    private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
+    public static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
     private static final String TAG = "ModuleDetail";
     private static final String SHARED_PREFS_NAME = "secret_shared_prefs";
     private LiveData<WorkInfo> workInfoLiveData = new MutableLiveData<>();
@@ -72,7 +89,10 @@ public class ModuleDetailActivity extends AppCompatActivity {
     private String token;
     private OkHttpClient client;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-
+    private JSONObject currentQuiz;
+    private JSONArray quizAttempts;
+    private int coursemodule;
+    private int cmid;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -161,8 +181,9 @@ public class ModuleDetailActivity extends AppCompatActivity {
             try {
                 if ("page".equals(type)) {
                     loadPageContent(cmid);
-                } else if ("quiz".equals(type)) {
-                    loadQuizContent(instanceId); // Пример для quiz (если нужен instanceId)
+                }else if ("quiz".equals(type)) {
+                    int quizId = getIntent().getIntExtra("instanceId", 0); // Берем instanceId для quiz
+                    loadQuizContent(quizId);
                 } else {
                     processModuleType(type, cmid, "", instanceId); // Передаем courseId в обработчик
                 }
@@ -249,6 +270,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 for (int i = 0; i < pages.length(); i++) {
                     JSONObject page = pages.getJSONObject(i);
                     if (page.getInt("coursemodule") == cmid) {
+                        Log.d(TAG,"coursemodule: "+cmid);
                         targetPage = page;
                         break;
                     }
@@ -312,6 +334,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
             for (int i = 0; i < resources.length(); i++) {
                 JSONObject resource = resources.getJSONObject(i);
                 if (resource.getInt("coursemodule") == cmid) {
+                    Log.d(TAG,"coursemodule: "+cmid);
                     targetResource = resource;
                     break;
                 }
@@ -344,8 +367,9 @@ public class ModuleDetailActivity extends AppCompatActivity {
         }
 
         // 2. Формирование правильного запроса с courseids вместо assignmentids
+        // Используйте cmid вместо courseId для запроса заданий
         HttpUrl url = buildApiUrl("mod_assign_get_assignments")
-                .addQueryParameter("courseids[0]", String.valueOf(courseId))
+                .addQueryParameter("assignmentids[0]", String.valueOf(courseId))
                 .build();
 
         executeRequest(url, json -> {
@@ -465,32 +489,27 @@ public class ModuleDetailActivity extends AppCompatActivity {
 
                 Request request = new Request.Builder().url(url).build();
                 try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                Log.e(TAG, "Request failed. Code: " + response.code() + " | Message: " + response.message());
-                throw new IOException("HTTP Error: " + response.code());
-            }
+                    String responseBody = response.body().string();
+                    Log.d(TAG, "Raw response: " + responseBody);
 
-            String responseBody = response.body().string();
-            Log.d(TAG, "Raw response: " + responseBody);
+                    JSONObject json = new JSONObject(responseBody);
 
-            JSONObject json = new JSONObject(responseBody);
-            if (json.has("exception")) {
-                String error = json.getString("message");
-                Log.e(TAG, "API Error: " + error);
-                throw new IOException("API Error: " + error);
-            }
+                    if (json.has("exception")) {
+                        String error = json.optString("message", "Unknown error");
+                        runOnUiThread(() -> showError("API Error: " + error));
+                        return;
+                    }
 
-            handler.handleResponse(json);
+                    handler.handleResponse(json);
                 }
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    handleContentError(e);
+                    showError("Ошибка запроса: " + e.getMessage());
                     progressBar.setVisibility(View.GONE);
                 });
             }
         });
     }
-
 
     private void displayAssignmentInfo(JSONObject assignment) throws JSONException {
         // Парсинг основных данных
@@ -536,6 +555,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("DefaultLocale")
     private void displayFolderFiles(JSONArray files) throws JSONException {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < files.length(); i++) {
@@ -588,7 +608,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         }
     }
 
-
     private void openPdfFile(File file) {
         try {
             if (!file.exists()) {
@@ -620,7 +639,21 @@ public class ModuleDetailActivity extends AppCompatActivity {
             showError("Ошибка доступа к файлу");
         }
     }
+    private void loadQuizAttempts(int quizId, int coursemodule) throws JSONException, IOException {
+        HttpUrl url = buildApiUrl("mod_quiz_get_user_attempts")
+                .addQueryParameter("quizid", String.valueOf(quizId))
+                .addQueryParameter("status", "all")
+                .build();
 
+        executeRequest(url, json -> {
+            try {
+                quizAttempts = json.getJSONArray("attempts");
+                Log.d(TAG, "Attempts received: " + quizAttempts.length());
+            } catch (JSONException e) {
+                showError("Ошибка данных попыток");
+            }
+        });
+    }
     private void openUrl(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
@@ -673,24 +706,360 @@ public class ModuleDetailActivity extends AppCompatActivity {
     }
 
     private void loadQuizContent(int quizId) throws IOException, JSONException {
+        Log.d(TAG, "Loading quiz with id: " + quizId);
+        int courseId = getIntent().getIntExtra("courseid", -1);
+
+        if (courseId <= 0) {
+            showError("Неверный ID курса");
+            return;
+        }
+        coursemodule = courseId;
         HttpUrl url = buildApiUrl("mod_quiz_get_quizzes_by_courses")
-                .addQueryParameter("quizids[0]", String.valueOf(quizId))
+                .addQueryParameter("courseids[0]", String.valueOf(courseId))
                 .build();
 
         executeRequest(url, json -> {
-            JSONArray quizzes = json.getJSONArray("quizzes");
-            JSONObject quiz = quizzes.getJSONObject(0);
-            String quizInfo = String.format("📝 Тест: %s\n\n%s\n\n⏱ Время: %d мин",
-                    quiz.getString("name"),
-                    fromHtml(quiz.optString("intro", "Нет описания")),
-                    quiz.getInt("timelimit") / 60);
-
-            runOnUiThread(() -> {
-                contentView.setText(quizInfo);
-                progressBar.setVisibility(View.GONE);
-            });
+            try {
+                JSONArray quizzes = json.getJSONArray("quizzes");
+                for (int i = 0; i < quizzes.length(); i++) {
+                    JSONObject quiz = quizzes.getJSONObject(i);
+                    if (quiz.getInt("id") == quizId) {
+                        currentQuiz = quiz; // Сохраняем текущий тест
+                        loadQuizAttempts(quizId, quiz.getInt("coursemodule"));
+                        checkQuizAccess(quizId, quiz);
+                        break;
+                    }
+                }
+            } catch (JSONException e) {
+                handleContentError(e);
+            }
         });
     }
+
+    private void checkQuizAccess(int quizId, JSONObject quiz) throws JSONException, IOException {
+        HttpUrl accessUrl = buildApiUrl("mod_quiz_get_quiz_access_information")
+                .addQueryParameter("quizid", String.valueOf(quizId))
+                .build();
+
+        executeRequest(accessUrl, accessJson -> {
+            try {
+                // Получаем параметры доступа напрямую из JSON
+                boolean canAttempt = accessJson.getBoolean("canattempt");
+                boolean canPreview = accessJson.getBoolean("canpreview");
+                boolean canReview = accessJson.getBoolean("canreviewmyattempts");
+
+                // Обновляем метод отображения
+                displayQuizPreview(quiz, canAttempt, canPreview, canReview);
+
+                if (canAttempt) {
+                    setupAttemptButton(quizId);
+                }
+
+            } catch (JSONException e) {
+                Log.e(TAG, "Ошибка парсинга access info: " + e.getMessage());
+                handleContentError(e);
+            }
+        });
+    }
+
+    private void displayQuizPreview(JSONObject quiz,
+                                    boolean canAttempt,
+                                    boolean canPreview,
+                                    boolean canReview) throws JSONException {
+        runOnUiThread(() -> {
+            // Создаем контейнер
+            LinearLayout container = findViewById(R.id.contentLayout);
+            container.removeAllViews();
+
+            // CardView
+            CardView card = new CardView(this);
+            card.setCardBackgroundColor(Color.WHITE);
+            card.setCardElevation(8f);
+            card.setRadius(16f);
+            card.setUseCompatPadding(true);
+
+            // Внутренний макет
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(32, 32, 32, 32);
+
+            // Название теста
+            TextView title = new TextView(this);
+            try {
+                title.setText(quiz.getString("name"));
+            } catch (JSONException e) {
+                throw new RuntimeException(e);
+            }
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            title.setTypeface(null, Typeface.BOLD);
+            title.setTextColor(Color.DKGRAY);
+            layout.addView(title);
+
+            // Добавляем информационные блоки
+            try {
+                addInfoRow(layout, "Макс. попыток", String.valueOf(quiz.getInt("attempts")));
+            } catch (JSONException e) {
+                throw new RuntimeException(e);
+            }
+            try {
+                addInfoRow(layout, "Лимит времени", quiz.getInt("timelimit") + " мин");
+            } catch (JSONException e) {
+                throw new RuntimeException(e);
+            }
+            try {
+                addInfoRow(layout, "Макс. оценка", String.valueOf(quiz.getDouble("grade")));
+            } catch (JSONException e) {
+                throw new RuntimeException(e);
+            }
+
+            // Добавляем статусы доступа
+            addStatusRow(layout, "Прохождение", canAttempt);
+            addStatusRow(layout, "Предпросмотр", canPreview);
+            addStatusRow(layout, "Просмотр результатов", canReview);
+
+            card.addView(layout);
+            container.addView(card);
+            progressBar.setVisibility(View.GONE);
+        });
+    }
+
+    private void addInfoRow(LinearLayout parent, String label, String value) {
+        TextView tv = new TextView(this);
+        tv.setText(String.format("%s: %s", label, value));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        tv.setTextColor(Color.parseColor("#616161"));
+        tv.setPadding(0, 16, 0, 0);
+        parent.addView(tv);
+    }
+
+    private void addStatusRow(LinearLayout parent, String label, boolean status) {
+        TextView tv = new TextView(this);
+        tv.setText(String.format("• %s: %s", label, status ? "✅ Доступно" : "❌ Недоступно"));
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        tv.setTextColor(status ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828"));
+        tv.setPadding(0, 8, 0, 0);
+        parent.addView(tv);
+    }
+
+
+
+    private void setupAttemptButton(int quizId) {
+        runOnUiThread(() -> {
+            LinearLayout container = findViewById(R.id.contentLayout);
+            JSONObject activeAttempt = getActiveAttempt();
+            Button startButton = new Button(this);
+
+            // Удаляем предыдущие кнопки
+            for (int i = 0; i < container.getChildCount(); i++) {
+                View v = container.getChildAt(i);
+                if (v instanceof Button) container.removeView(v);
+            }
+
+            if (activeAttempt != null) {
+                startButton.setText("Продолжить попытку");
+                startButton.setOnClickListener(v -> {
+                    try {
+                        // ДОБАВЛЯЕМ ПЕРЕДАЧУ LAYOUT
+                        String layoutStr = activeAttempt.getString("layout");
+
+                        Intent intent = new Intent(
+                                ModuleDetailActivity.this,
+                                QuizAttemptActivity.class
+                        );
+                        intent.putExtra("attemptId", activeAttempt.getInt("id"));
+                        intent.putExtra("layout", layoutStr); // ПЕРЕДАЕМ LAYOUT
+                        intent.putExtra("cmid", coursemodule); // Добавьте эту строку
+                        startActivity(intent);
+                    } catch (JSONException e) {
+                        showError("Ошибка запуска: " + e.getMessage());
+                    }
+                });
+            } else {
+                startButton.setText("Начать попытку");
+                startButton.setOnClickListener(v -> startNewAttempt(quizId));
+            }
+
+            container.addView(startButton);
+        });
+    }
+
+    private void startNewAttempt(int quizId) {
+        new AlertDialog.Builder(this)
+                .setTitle("Начать новую попытку?")
+                .setMessage("У вас осталось попыток: " + getRemainingAttempts())
+                .setPositiveButton("Начать", (dialog, which) -> {
+                    try {
+                        processNewAttempt(quizId);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error starting attempt", e);
+                        showError("Ошибка запуска попытки");
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+
+    private int getRemainingAttempts() {
+        try {
+            if (currentQuiz == null) return 0;
+
+            int maxAttempts = currentQuiz.getInt("attempts");
+            int usedAttempts = (int) quizAttempts.length();
+            return maxAttempts - usedAttempts;
+        } catch (JSONException e) {
+            Log.e(TAG, "Error getting remaining attempts", e);
+            return 0;
+        }
+    }
+
+    private JSONObject getActiveAttempt() {
+        try {
+            for (int i = 0; i < quizAttempts.length(); i++) {
+                JSONObject attempt = quizAttempts.getJSONObject(i);
+                if (attempt.getString("state").equals("inprogress")) {
+                    return attempt;
+                }
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Error finding active attempt", e);
+        }
+        return null;
+    }
+
+
+    private void processNewAttempt(int quizId) throws JSONException, IOException {
+        HttpUrl startUrl = buildApiUrl("mod_quiz_start_attempt")
+                .addQueryParameter("quizid", String.valueOf(quizId))
+                .build();
+
+        executeRequest(startUrl, json -> {
+            try {
+                JSONObject attempt = json.getJSONObject("attempt");
+                String layoutStr = attempt.getString("layout"); // Получаем как строку
+                Log.d(TAG,"startUrl QuizAttemptActivity: "+ startUrl);
+
+                Intent intent = new Intent(ModuleDetailActivity.this, QuizAttemptActivity.class);
+                intent.putExtra("attemptId", attempt.getInt("id"));
+                intent.putExtra("layout", layoutStr); // Передаём как строку
+                intent.putExtra("cmid", coursemodule);
+                startActivity(intent);
+            } catch (JSONException e) {
+                if (json.has("errorcode") && json.getString("errorcode").equals("attemptstillinprogress")) {
+                    runOnUiThread(() -> {
+                        new AlertDialog.Builder(this)
+                                .setTitle("Активная попытка")
+                                .setMessage("У вас есть незавершенная попытка. Хотите продолжить?")
+                                .setPositiveButton("Да", (d, w) -> {
+                                    JSONObject active = getActiveAttempt();
+                                    if (active != null) {
+                                        try {
+                                            loadAttemptQuestions(active.getInt("id"));
+                                        } catch (JSONException ex) {
+                                            showError("Ошибка загрузки попытки");
+                                        } catch (IOException ex) {
+                                            throw new RuntimeException(ex);
+                                        }
+                                    }
+                                })
+                                .setNegativeButton("Нет", null)
+                                .show();
+                    });
+                } else {
+                    showError("Ошибка запуска попытки");
+                }
+            }
+        });
+    }
+
+
+
+    private void loadAttemptQuestions(int attemptId) throws JSONException, IOException {
+        HttpUrl questionsUrl = buildApiUrl("mod_quiz_get_attempt_data")
+                .addQueryParameter("attemptid", String.valueOf(attemptId))
+                .addQueryParameter("page", "0") // Добавляем обязательный параметр
+                .build();
+
+        executeRequest(questionsUrl, json -> {
+            try {
+                if (json.has("questions")) {
+                    JSONArray questions = json.getJSONArray("questions");
+                    displayQuestions(questions);
+                } else {
+                    showError("Не удалось загрузить вопросы");
+                }
+            } catch (JSONException e) {
+                handleContentError(e);
+            }
+        });
+    }
+
+    private void displayQuestions(JSONArray questions) {
+        runOnUiThread(() -> {
+            try {
+                StringBuilder questionsText = new StringBuilder();
+                questionsText.append("Вопросы теста:\n\n");
+
+                for (int i = 0; i < questions.length(); i++) {
+                    JSONObject question = questions.getJSONObject(i);
+                    String htmlContent = question.getString("html");
+
+                    // Извлекаем текст вопроса из HTML
+                    String questionText = extractQuestionText(htmlContent);
+
+                    questionsText.append(i + 1)
+                            .append(". ")
+                            .append(questionText)
+                            .append("\n");
+
+                    // Извлекаем варианты ответов
+                    List<String> options = extractOptions(htmlContent);
+                    for (int j = 0; j < options.size(); j++) {
+                        questionsText.append("   ")
+                                .append((char) ('A' + j))
+                                .append(") ")
+                                .append(options.get(j))
+                                .append("\n");
+                    }
+                    questionsText.append("\n");
+                }
+
+                contentView.setText(questionsText.toString());
+
+            } catch (JSONException e) {
+                Log.e(TAG, "Error parsing questions: " + e.getMessage());
+                showError("Ошибка загрузки вопросов");
+            }
+        });
+    }
+
+    private String extractQuestionText(String html) {
+        try {
+            // Используем Jsoup для парсинга HTML
+            Document doc = Jsoup.parse(html);
+            Elements qtext = doc.select("div.qtext");
+            return qtext.text().trim();
+        } catch (Exception e) {
+            Log.e(TAG, "HTML parse error: " + e.getMessage());
+            return "Не удалось извлечь текст вопроса";
+        }
+    }
+
+    private List<String> extractOptions(String html) {
+        List<String> options = new ArrayList<>();
+        try {
+            Document doc = Jsoup.parse(html);
+            Elements answerLabels = doc.select("div.answer div.d-flex div.flex-fill");
+
+            for (Element label : answerLabels) {
+                options.add(label.text().trim());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Options parse error: " + e.getMessage());
+        }
+        return options;
+    }
+
 
     @Override
     protected void onDestroy() {
@@ -704,7 +1073,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
     interface ResponseHandler {
         void handleResponse(JSONObject json) throws Exception;
     }
-
 
     private class URLDrawable extends BitmapDrawable {
         private Drawable drawable;

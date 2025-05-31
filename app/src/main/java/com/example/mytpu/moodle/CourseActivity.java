@@ -15,7 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
-import com.example.mytpu.MainActivity;
+import com.example.mytpu.MainScreen;
 import com.example.mytpu.MyApplication;
 import com.example.mytpu.R;
 
@@ -150,13 +150,14 @@ public class CourseActivity extends AppCompatActivity {
         List<CourseContentAdapter.CourseSection> courseSections = new ArrayList<>();
 
         for (int i = 0; i < sections.length(); i++) {
+
             JSONObject section = sections.getJSONObject(i);
             JSONArray modules = section.getJSONArray("modules");
             List<ModuleAdapter.CourseModule> courseModules = new ArrayList<>();
 
             for (int j = 0; j < modules.length(); j++) {
                 JSONObject module = modules.getJSONObject(j);
-                int cmid = module.getInt("id"); // Правильный CMID
+                int cmid = module.optInt("coursemodule", module.getInt("id")); // ✅
                 int instanceId = module.getInt("instance");
                 int courseId = getIntent().getIntExtra("courseId", -1); // Получаем courseId из Intent
 
@@ -185,6 +186,8 @@ public class CourseActivity extends AppCompatActivity {
         }
         return courseSections;
     }
+
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -196,7 +199,7 @@ public class CourseActivity extends AppCompatActivity {
     private void checkAuth() {
         if (token == null || token.isEmpty()) {
             Toast.makeText(this, "Требуется повторная авторизация", Toast.LENGTH_SHORT).show();
-            Intent intent = new Intent(this, MainActivity.class);
+            Intent intent = new Intent(this, MainScreen.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
             finish();

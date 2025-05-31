@@ -1,8 +1,6 @@
 package com.example.mytpu.mailTPU;
 
 
-import android.Manifest;
-import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -11,20 +9,18 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.text.Html;
 import android.text.TextUtils;
+import android.util.Base64;
 import android.util.Log;
 import android.util.LruCache;
-import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -34,7 +30,6 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,7 +38,6 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.content.FileProvider;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import androidx.work.Worker;
@@ -53,17 +47,25 @@ import com.example.mytpu.R;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Cookie;
 import okhttp3.HttpUrl;
@@ -78,17 +80,16 @@ public class EmailDetailActivity extends AppCompatActivity {
     private String from;
     private String date;
     private WebView webView;
-    private LinearLayout imagesContainer;
     private static final String TAG = "EmailDetailActivity";
-    private LruCache<String, Uri> uriCache = new LruCache<>(50);
     static final int STORAGE_PERMISSION_CODE = 101;
-    private List<Map<String, String>> attachments = new ArrayList<>();
+    private List<RoundcubeAPI.Attachment> attachments = new ArrayList<>();
     private EmailDetailActivity context;
-    private String fileType;
     private LinearLayout replyContainer;
     private EditText replyEditText;
-    private String currentAction;
-    private String replySubject;
+    private String emailBody;
+    private Button allowRemoteButton;
+    private boolean allowRemoteResources = false;
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
@@ -109,9 +110,9 @@ public class EmailDetailActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        RoundcubeAPI.clearCache(this);
         setContentView(R.layout.activity_email_detail);
         context = this;
-
         webView = findViewById(R.id.webView);
         initReplyUI();
         // Инициализация UI
@@ -120,7 +121,11 @@ public class EmailDetailActivity extends AppCompatActivity {
         subjectTextView = findViewById(R.id.subjectTextView);
         dateTextView = findViewById(R.id.dateTextView);
         client = MailActivity.MyMailSingleton.getInstance(this).getClient();
-        configureWebView();
+        allowRemoteButton = findViewById(R.id.allowRemoteButton);
+        allowRemoteButton.setOnClickListener(v -> {
+            allowRemoteResources = true;
+            reloadEmailWithRemoteResources();
+        });
         syncCookiesToWebView();
         // Извлекаем информацию из Intent
         emailId = getIntent().getStringExtra("email_id");
@@ -133,12 +138,19 @@ public class EmailDetailActivity extends AppCompatActivity {
                     String content = RoundcubeAPI.fetchEmailContent(
                             EmailDetailActivity.this,
                             emailId,
-                            attachments -> runOnUiThread(() -> {
-                                if (!isDestroyed()) { // Проверка на уничтожение активити
-                                    setupAttachmentsRecycler(attachments);
+                            false, // Добавляем параметр allowRemote
+                            new RoundcubeAPI.AttachmentsCallback() {
+                                @Override
+                                public void onAttachmentsLoaded(List<RoundcubeAPI.Attachment> attachments) {
+                                    runOnUiThread(() -> {
+                                        if (!isDestroyed()) {
+                                            setupAttachmentsRecycler(attachments);
+                                        }
+                                    });
                                 }
-                            })
+                            }
                     );
+                    emailBody = content; // Преобразуем HTML в текст
 
                     runOnUiThread(() -> {
                         if (!isDestroyed()) {
@@ -161,69 +173,132 @@ public class EmailDetailActivity extends AppCompatActivity {
         PeriodicWorkRequest cleanupRequest =
                 new PeriodicWorkRequest.Builder(CacheCleanupWorker.class, 24, TimeUnit.HOURS)
                         .build();
-// В методе, где происходит загрузка контента письма
-
         WorkManager.getInstance(this).enqueue(cleanupRequest);
-        // Асинхронное обновление токена
         Executors.newSingleThreadExecutor().execute(() -> MailActivity.refreshCsrfToken(this));
     }
 
     // Добавьте эти поля в класс
-
-
-    // В методе onCreate после инициализации других элементов:
     private void initReplyUI() {
         replyContainer = findViewById(R.id.reply_container);
         replyEditText = findViewById(R.id.reply_edit_text);
         ImageButton sendButton = findViewById(R.id.send_button);
 
-        ImageButton replyButton = findViewById(R.id.reply_button);
-        ImageButton replyAllButton = findViewById(R.id.reply_all_button);
         ImageButton forwardButton = findViewById(R.id.forward_button);
-        ImageButton moreActionsButton = findViewById(R.id.more_actions_button);
+        forwardButton.setOnClickListener(v -> {
+            Log.d("EmailDetailActivity", "═════════ FORWARD INIT ═════════");
+            Log.d("EmailDetailActivity", "Original email ID: " + emailId);
+            Log.d("EmailDetailActivity", "Attachments count: " + attachments.size());
 
-        replyButton.setOnClickListener(v -> prepareReply("reply"));
-        replyAllButton.setOnClickListener(v -> prepareReply("reply_all"));
-        forwardButton.setOnClickListener(v -> prepareReply("forward"));
+            Intent intent = new Intent(EmailDetailActivity.this, ComposeActivity.class);
+            intent.putExtra("action", "forward");
+            intent.putExtra("subject", subject);
+            intent.putExtra("emailId", emailId);
+
+            String processedHtml = processHtmlForForward(String.valueOf(EmailDetailActivity.this));
+            intent.putExtra("body", processedHtml);
+
+
+            // Формируем HTML-заголовок
+            String forwardedHeader = String.format(
+                    "<div style='margin: 15px 0; border-left: 3px solid #ddd; padding: 10px 15px; color: #666;'>" +
+                            "<p style='margin: 0 0 8px 0; font-weight: bold;'>─── Пересланное сообщение ───</p>" +
+                            "<p style='margin: 0 0 5px 0;'>От: %s</p>" +
+                            "<p style='margin: 0;'>Дата: %s</p>" +
+                            "</div>",
+                    from != null ? from : "Неизвестный отправитель",
+                    new SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(new Date())
+            );
+
+            // Объединяем с оригинальным HTML
+            String fullBody = forwardedHeader + emailBody;
+            String encodedBody = Base64.encodeToString(fullBody.getBytes(StandardCharsets.UTF_8), Base64.DEFAULT);
+            intent.putExtra("body", encodedBody);
+
+            // Передача вложений
+            ArrayList<Uri> attachmentUris = new ArrayList<>();
+            for (RoundcubeAPI.Attachment attachment : attachments) {
+                try {
+                    File file = attachment.getTempFile();
+                    if (file == null || !file.exists()) continue;
+
+                    Uri uri = FileProvider.getUriForFile(
+                            EmailDetailActivity.this,
+                            "com.example.mytpu.fileprovider", // Должно совпадать с манифестом
+                            file
+                    );
+                    // Добавляем флаг доступа
+                    context.grantUriPermission(
+                            "com.example.mytpu", // Ваш пакет
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    );
+                    attachmentUris.add(uri);
+                } catch (Exception e) {
+                    Log.e(TAG, "Attachment error: " + e.getMessage());
+                }
+            }
+            intent.putParcelableArrayListExtra("attachments", attachmentUris);
+            startActivity(intent);
+        });
         sendButton.setOnClickListener(v -> sendReply());
-        moreActionsButton.setOnClickListener(this::showMoreActionsPopup);
     }
+    private String processHtmlForForward(String html) {
+        Document doc = Jsoup.parse(html);
+        Elements imgs = doc.select("img");
 
-    private void prepareReply(String action) {
-        currentAction = action;
-        replyContainer.setVisibility(View.VISIBLE);
-
-        // Формируем тему
-        String prefix = "";
-        switch (action) {
-            case "reply":
-            case "reply_all":
-                prefix = "Re: ";
-                break;
-            case "forward":
-                prefix = "Fwd: ";
-                break;
+        // Генерируем новые CID для изображений
+        int counter = 1;
+        for (Element img : imgs) {
+            String newCid = "img_" + System.currentTimeMillis() + "_" + counter++;
+            img.attr("src", "cid:" + newCid);
         }
 
-        String originalSubject = subjectTextView.getText().toString();
-        replySubject = originalSubject.startsWith(prefix) ?
-                originalSubject : prefix + originalSubject;
-
-        // Формируем текст ответа
-        String quote = "\n\n---------- Original Message ----------\n" +
-                "From: " + from + "\n" +
-                "Date: " + date + "\n" +
-                "Subject: " + subject + "\n\n";
-
-        replyEditText.setText(quote);
-        replyEditText.requestFocus();
+        return doc.html();
     }
-
+    private void reloadEmailWithRemoteResources() {
+        progressBar.setVisibility(View.VISIBLE);
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                String content = RoundcubeAPI.fetchEmailContent(
+                        EmailDetailActivity.this,
+                        emailId,
+                        true, // Разрешаем внешние ресурсы
+                        new RoundcubeAPI.AttachmentsCallback() {
+                            @Override
+                            public void onAttachmentsLoaded(List<RoundcubeAPI.Attachment> attachments) {
+                                runOnUiThread(() -> setupAttachmentsRecycler(attachments));
+                            }
+                        }
+                );
+                runOnUiThread(() -> {
+                    showHtml(content);
+                });
+            } catch (IOException e) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Ошибка перезагрузки", Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
     private void sendReply() {
         String message = replyEditText.getText().toString().trim();
         if (message.isEmpty()) {
             Toast.makeText(this, R.string.enter_message, Toast.LENGTH_SHORT).show();
             return;
+        }
+
+        // Collect attachment URIs
+        ArrayList<Uri> attachmentUris = new ArrayList<>();
+        for (RoundcubeAPI.Attachment attachment : attachments) {
+            try {
+                Uri uri = FileProvider.getUriForFile(
+                        EmailDetailActivity.this,
+                        "com.example.mytpu.fileprovider",
+                        attachment.getTempFile()
+                );
+                attachmentUris.add(uri);
+            } catch (Exception e) {
+                Log.e(TAG, "Error creating URI for attachment", e);
+            }
         }
 
         Executors.newSingleThreadExecutor().execute(() -> {
@@ -232,15 +307,13 @@ public class EmailDetailActivity extends AppCompatActivity {
                 boolean success = RoundcubeAPI.sendEmail(
                         this,
                         emailId,
-                        currentAction,
-                        replySubject,
                         message,
-                        csrfToken
+                        csrfToken,
+                        attachmentUris // Pass attachments here
                 );
 
                 runOnUiThread(() -> {
                     if (success) {
-                        replyContainer.setVisibility(View.GONE);
                         Toast.makeText(this, R.string.message_sent, Toast.LENGTH_SHORT).show();
                     } else {
                         Toast.makeText(this, R.string.send_error, Toast.LENGTH_SHORT).show();
@@ -253,70 +326,14 @@ public class EmailDetailActivity extends AppCompatActivity {
         });
     }
 
-    private void showMoreActionsPopup(View view) {
-        PopupMenu popup = new PopupMenu(this, view);
-        popup.inflate(R.menu.email_actions_menu);
-
-        popup.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.action_delete) {
-                deleteEmail();
-                return true;
-            } else if (item.getItemId() == R.id.action_mark_unread) {
-                markAsUnread();
-                return true;
-            }
-            return false;
-        });
-
-        popup.show();
-    }
-
-    private void deleteEmail() {
-        Executors.newSingleThreadExecutor().execute(() -> {
-            try {
-                boolean success = RoundcubeAPI.deleteEmail(this, emailId);
-                runOnUiThread(() -> {
-                    if (success) {
-                        Toast.makeText(this, R.string.email_deleted, Toast.LENGTH_SHORT).show();
-                        finish();
-                    } else {
-                        Toast.makeText(this, R.string.delete_error, Toast.LENGTH_SHORT).show();
-                    }
-                });
-            } catch (Exception e) {
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
-        });
-    }
-
-    private void markAsUnread() {
-        Executors.newSingleThreadExecutor().execute(() -> {
-            try {
-                boolean success = RoundcubeAPI.markAsUnread(this, emailId);
-                runOnUiThread(() -> {
-                    if (success) {
-                        Toast.makeText(this, R.string.marked_unread, Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, R.string.mark_error, Toast.LENGTH_SHORT).show();
-                    }
-                });
-            } catch (Exception e) {
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
-            }
-        });
-    }
-
-
-
     @Override
     protected void onDestroy() {
         RoundcubeAPI.clearCache(this);
+        FileLogger.close();
         super.onDestroy();
     }
 
-    private void configureWebView() {
+    private void configureWebView(String html) {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -332,16 +349,32 @@ public class EmailDetailActivity extends AppCompatActivity {
                     pageLoaded = true;
                     progressBar.setVisibility(View.GONE);
                     view.evaluateJavascript(
-                            "document.querySelectorAll('meta[http-equiv=Content-Security-Policy]').forEach(e => e.remove());",
+                            "document.querySelectorAll('meta[http-equiv]').forEach(e => e.remove());",
                             null
                     );
+
+
                 }
             }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url.startsWith("https://letter.tpu.ru/")) {
+                    view.loadUrl(url);
+                    return true;
+                }
+                return super.shouldOverrideUrlLoading(view, url);
+            }
+
+
         });
     }
-
+    public void setHasBlockedResources(boolean hasBlocked) {
+        runOnUiThread(() ->
+                allowRemoteButton.setVisibility(hasBlocked ? View.VISIBLE : View.GONE));
+    }
     private void showHtml(String html) {
-
+        configureWebView(html);
         runOnUiThread(() -> {
             TextView attachmentsLabel = findViewById(R.id.attachmentsLabel);
             attachmentsLabel.setVisibility(attachments.isEmpty() ? View.GONE : View.VISIBLE);
@@ -351,6 +384,7 @@ public class EmailDetailActivity extends AppCompatActivity {
             }
 
             String processedHtml = fixRelativeLinks(html);
+            Log.d(TAG, "processedHtml load : "+ processedHtml);
             try {
                 webView.loadDataWithBaseURL(
                         "https://letter.tpu.ru/",
@@ -360,7 +394,7 @@ public class EmailDetailActivity extends AppCompatActivity {
                         null
                 );
             } catch (Exception e) {
-                Log.e(TAG, "WebView load error", e);
+                Log.d(TAG, "WebView load error"+ e);
             }
         });
     }
@@ -390,7 +424,7 @@ public class EmailDetailActivity extends AppCompatActivity {
 
             return doc.html();
         } catch (Exception e) {
-            Log.e(TAG, "Error fixing links", e);
+            Log.d(TAG, "Error fixing links"+ e);
             return html;
         }
     }
@@ -416,7 +450,7 @@ public class EmailDetailActivity extends AppCompatActivity {
             }
             CookieManager.getInstance().flush();
         } catch (Exception e) {
-            Log.e(TAG, "Cookie sync error: ", e);
+            Log.d(TAG, "Cookie sync error: "+ e);
         }
     }
 
@@ -426,7 +460,7 @@ public class EmailDetailActivity extends AppCompatActivity {
 
             LinearLayout container = findViewById(R.id.CardLinearLayout); // Было CardLinearLayiut
             if (container == null) {
-                Log.e(TAG, "⚠️ CardLinearLayout not found!");
+                Log.d(TAG, "⚠️ CardLinearLayout not found!");
                 return;
             }
 
@@ -451,7 +485,7 @@ public class EmailDetailActivity extends AppCompatActivity {
                     Log.d(TAG, "File path: " + attachment.getTempFile().getAbsolutePath());
                     // 6. Проверка существования файла
                     if (attachment.getTempFile() == null || !attachment.getTempFile().exists()) {
-                        Log.e(TAG, "File missing: " + attachment.getFileName());
+                        Log.d(TAG, "File missing: " + attachment.getFileName());
                         continue;
                     }
 
@@ -470,7 +504,7 @@ public class EmailDetailActivity extends AppCompatActivity {
                         Log.d(TAG, "Card added: " + attachment.getFileName());
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error creating card: " + e.getMessage());
+                    Log.d(TAG, "Error creating card: " + e.getMessage());
                 }
             }
 
@@ -503,7 +537,7 @@ public class EmailDetailActivity extends AppCompatActivity {
                 Bitmap bitmap = BitmapFactory.decodeFile(attachment.getTempFile().getPath(), options);
                 ivBackground.setImageBitmap(bitmap);
             } catch (Exception e) {
-                Log.e(TAG, "Error loading image: " + e.getMessage());
+                Log.d(TAG, "Error loading image: " + e.getMessage());
                 ivBackground.setVisibility(View.GONE);
                 fileIcon.setVisibility(View.VISIBLE);
                 fileIcon.setText("🖼️");
@@ -583,7 +617,7 @@ public class EmailDetailActivity extends AppCompatActivity {
         try {
             File file = attachment.getTempFile();
             Uri uri = FileProvider.getUriForFile(this,
-                    "com.example.mytpu.fileprovider", // Замените на ваш authority
+                    "com.example.mytpu.provider", // Замените на ваш authority
                     file
             );
 
@@ -595,7 +629,7 @@ public class EmailDetailActivity extends AppCompatActivity {
         } catch (ActivityNotFoundException e) {
             Toast.makeText(this, "No app found to open this file", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Log.e(TAG, "Error opening file: " + e.getMessage());
+            Log.d(TAG, "Error opening file: " + e.getMessage());
         }
     }
 
@@ -618,19 +652,23 @@ public class EmailDetailActivity extends AppCompatActivity {
 
             Toast.makeText(this, "File saved to Downloads", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Log.e(TAG, "Download failed: " + e.getMessage());
+            Log.d(TAG, "Download failed: " + e.getMessage());
             Toast.makeText(this, "Download failed", Toast.LENGTH_SHORT).show();
         }
     }
 
     // Вспомогательный метод для определения MIME-типа
-    private String getMimeType(String url) {
-        String extension = MimeTypeMap.getFileExtensionFromUrl(url);
-        if (extension == null) {
-            // Дополнительная проверка для случаев, когда расширение не извлечено
-            extension = url.substring(url.lastIndexOf('.') + 1);
+    private static String getMimeType(String fileName) {
+        String extension = MimeTypeMap.getFileExtensionFromUrl(fileName).toLowerCase();
+        String type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+
+        // Ручная проверка для изображений
+        if (type == null) {
+            if (extension.equals("jpg") || extension.equals("jpeg")) return "image/jpeg";
+            if (extension.equals("png")) return "image/png";
+            if (extension.equals("gif")) return "image/gif";
         }
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+        return type != null ? type : "application/octet-stream";
     }
 
     private int dpToPx(int dp) {
@@ -651,4 +689,5 @@ public class EmailDetailActivity extends AppCompatActivity {
             return Result.success();
         }
     }
+
 }

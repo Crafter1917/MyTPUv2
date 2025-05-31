@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"
         tools:ignore="ScopedStorage" />
@@ -26,11 +30,19 @@
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true"
         tools:targetApi="31">
-
+        <activity
+            android:name=".moodle.QuizAttemptActivity"
+            android:label="Тест"
+            android:theme="@style/Theme.MyTPU"/>
+        <receiver
+            android:name=".schedule.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false"/>
         <activity
             android:name=".mailTPU.MailActivity"
             android:label="Почта ТПУ"/>
-
+        <activity android:name=".MainScreen"
+            tools:ignore="Instantiatable" />
         <activity
             android:name=".mailTPU.ComposeActivity"
             android:label="Новое письмо"/>
@@ -38,16 +50,17 @@
             android:name=".mailTPU.EmailDetailActivity"
             android:label="Просмотр письма"/>
 
-        <activity
-            android:name=".MainActivity"
+        <activity android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
         <activity android:name=".moodle.DashboardActivity" />
+        <activity
+            android:name=".SettingsActivity"
+            android:label="Настройки" />
         <activity
             android:name=".schedule.ScheduleActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -69,7 +82,10 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value=".moodle.CourseActivity" />
         </activity>
-
+        <activity
+            android:name=".portalTPU.SitesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyTPU" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.example.mytpu.provider"

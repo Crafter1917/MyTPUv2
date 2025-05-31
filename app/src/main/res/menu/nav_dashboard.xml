@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:id="@+id/main_group">
+        <item
+            android:id="@+id/nav_dashboard"
+            android:title="Moodle"
+            android:icon="@drawable/ic_dashboard"/>
+
+        <item
+            android:id="@+id/nav_portal"
+            android:title="Портал"
+            android:icon="@drawable/ic_portal"/>
+
+        <item
+            android:id="@+id/nav_schedule"
+            android:title="Расписание"
+            android:icon="@drawable/ic_schedule"/>
+
+        <item
+            android:id="@+id/nav_mail"
+            android:title="Почта"
+            android:icon="@drawable/ic_mail"/>
+    </group>
+
+    <group android:id="@+id/settings_group">
+        <item
+            android:id="@+id/nav_settings"
+            android:title="Настройки"
+            android:icon="@drawable/ic_settings"/>
+
+        <item
+            android:id="@+id/nav_login"
+            android:title="Вход"
+            android:icon="@drawable/ic_login"
+            android:visible="false"/>
+
+        <item
+            android:id="@+id/nav_logout"
+            android:title="Выход"
+            android:icon="@drawable/ic_logout"/>
+    </group>
+</menu>

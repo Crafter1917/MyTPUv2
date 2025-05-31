@@ -1,10 +1,13 @@
 package com.example.mytpu.moodle;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -89,23 +92,62 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
         return new ModuleViewHolder(view);
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public void onBindViewHolder(@NonNull ModuleViewHolder holder, int position) {
         CourseModule module = modules.get(position);
+
         holder.moduleName.setText(module.getName());
         holder.moduleType.setText(getModuleType(module.getType()));
+        holder.moduleIcon.setImageResource(getIconForType(module.getType()));
+
+        // Анимация нажатия
+        holder.itemView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(100).start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP ||
+                    event.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+            }
+            return false;
+        });
+
+        // Добавляем обработчик клика
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, ModuleDetailActivity.class);
             intent.putExtra("cmid", module.getCmid());
-            intent.putExtra("instanceId", module.getInstanceId()); // Добавляем instanceId
+            intent.putExtra("instanceId", module.getInstanceId());
             intent.putExtra("type", module.getType());
-            intent.putExtra("courseid", module.getCourseId()); // Передаем courseId
-            intent.putExtra("name", module.getName()); // Передаем название модуля
-            intent.putExtra("url", module.getUrl()); // Передаем URL (если нужен)
+            intent.putExtra("courseid", module.getCourseId());
+            intent.putExtra("name", module.getName());
+            intent.putExtra("url", module.getUrl());
             context.startActivity(intent);
         });
     }
+    private int getIconForType(String type) {
+        switch (type) {
+            case "resource": return R.drawable.ic_file;
+            case "url": return R.drawable.ic_link;
+            case "assign": return R.drawable.ic_assignment;
+            case "quiz": return R.drawable.ic_quiz;
+            case "forum": return R.drawable.ic_forum;
+            case "page": return R.drawable.ic_page;
+            default: return R.drawable.ic_default;
+        }
+    }
 
+    static class ModuleViewHolder extends RecyclerView.ViewHolder {
+        ImageView moduleIcon;
+        TextView moduleName;
+        TextView moduleType;
+
+        public ModuleViewHolder(@NonNull View itemView) {
+            super(itemView);
+            moduleIcon = itemView.findViewById(R.id.moduleIcon);
+            moduleName = itemView.findViewById(R.id.moduleName);
+            moduleType = itemView.findViewById(R.id.moduleType);
+        }
+    }
     private String getModuleType(String type) {
         switch (type) {
             case "resource": return "Файл";
@@ -127,17 +169,6 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
     @Override
     public int getItemCount() {
         return modules.size();
-    }
-
-    static class ModuleViewHolder extends RecyclerView.ViewHolder {
-        TextView moduleName;
-        TextView moduleType;
-
-        public ModuleViewHolder(@NonNull View itemView) {
-            super(itemView);
-            moduleName = itemView.findViewById(R.id.moduleName);
-            moduleType = itemView.findViewById(R.id.moduleType);
-        }
     }
 
 }

@@ -5,19 +5,30 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.Button;
+import android.view.LayoutInflater;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
-import com.example.mytpu.MainActivity;
+import com.example.mytpu.MainScreen;
 import com.example.mytpu.MyApplication;
 import com.example.mytpu.R;
+import com.example.mytpu.portalTPU.PortalAuthHelper;
 import com.example.mytpu.schedule.ScheduleActivity;
+import com.google.android.material.navigation.NavigationView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -36,29 +47,60 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class DashboardActivity extends AppCompatActivity {
+public class DashboardActivity extends AppCompatActivity
+        implements NavigationView.OnNavigationItemSelectedListener {
 
     private static final String TAG = "DashboardActivity";
     private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
-    private Button mailButton;
+
+    // Добавленные элементы для Drawer
+    private DrawerLayout drawerLayout;
+    private NavigationView navigationView;
+    private ActionBarDrawerToggle drawerToggle;
+
     private LinearLayout recentcoursesContainer;
     private TextView welcomeTextView;
     private LinearLayout coursesContainer;
     private OkHttpClient client;
     private TextView logTextView;
-    private Button logoutButton;
-    private Button scheduleButton;
     private SharedPreferences sharedPreferences;
     private ExecutorService executor;
     private String token;
+    private PortalAuthHelper portalAuthHelper;
 
     @SuppressLint("MissingInflatedId")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_dashboard); // Только один вызов!
+
+        // Инициализация Toolbar
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        }
+
+        // Настройка DrawerLayout
+        drawerLayout = findViewById(R.id.drawer_layout);
+        ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
+                this,
+                drawerLayout,
+                findViewById(R.id.toolbar),
+                R.string.navigation_drawer_open,
+                R.string.navigation_drawer_close
+        );
+
+        // Связывание компонентов
+
+        drawerLayout.addDrawerListener(toggle);
+        toggle.syncState();
+
+        NavigationView navigationView = findViewById(R.id.nav_view);
+        navigationView.setNavigationItemSelectedListener(this);
+
+
         setContentView(R.layout.activity_dashboard);
-        mailButton = findViewById(R.id.button_mail);
-        mailButton.setOnClickListener(v -> executor.execute(this::openMail));
 
         coursesContainer = findViewById(R.id.coursesContainer);
         welcomeTextView = findViewById(R.id.welcomeTextView);
@@ -66,8 +108,9 @@ public class DashboardActivity extends AppCompatActivity {
         client = ((MyApplication) getApplication()).getClient();
 
         logTextView = findViewById(R.id.logTextView);
-        logoutButton = findViewById(R.id.logoutButton);
-        scheduleButton = findViewById(R.id.button_schedule);
+
+        portalAuthHelper = new PortalAuthHelper(this);
+
 
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -93,16 +136,9 @@ public class DashboardActivity extends AppCompatActivity {
         } else {
             navigateToMainActivity();
         }
+    }
 
-        logoutButton.setOnClickListener(v -> executor.execute(this::logout));
-        scheduleButton.setOnClickListener(v -> executor.execute(this::schedule));
-    }
-    private void openMail() {
-        runOnUiThread(() -> {
-            Intent intent = new Intent(DashboardActivity.this, com.example.mytpu.mailTPU.MailActivity.class);
-            startActivity(intent);
-        });
-    }
+
     private void loadUserData() {
         executor.execute(() -> {
             try {
@@ -128,7 +164,32 @@ public class DashboardActivity extends AppCompatActivity {
             }
         });
     }
+    @Override
+    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
 
+        if (id == R.id.nav_dashboard) {
+            // Уже находимся на этом экране
+        } else if (id == R.id.nav_schedule) {
+            startActivity(new Intent(this, ScheduleActivity.class));
+        } else if (id == R.id.nav_mail) {
+            startActivity(new Intent(this, com.example.mytpu.mailTPU.MailActivity.class));
+        } else if (id == R.id.nav_logout) {
+            executor.execute(this::logout);
+        }
+
+        drawerLayout.closeDrawer(GravityCompat.START);
+        return true;
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.closeDrawer(GravityCompat.START);
+        } else {
+            super.onBackPressed();
+        }
+    }
     private JSONObject getSiteInfo() throws IOException, JSONException {
         HttpUrl url = HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
                 .addQueryParameter("wstoken", token)
@@ -172,8 +233,10 @@ public class DashboardActivity extends AppCompatActivity {
         return courses;
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void updateCoursesUI(List<Course> courses) {
         coursesContainer.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(this);
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
 
@@ -206,18 +269,41 @@ public class DashboardActivity extends AppCompatActivity {
             showToast("Ошибка доступа к хранилищу");
             finish();
         }
-        coursesContainer.removeAllViews();
         for (Course course : courses) {
-            Button courseButton = new Button(this);
-            courseButton.setText(course.getName());
-            // В DashboardActivity
-            courseButton.setOnClickListener(v -> {
+            // Инфлейтим кастомный макет вместо стандартной кнопки
+            View courseItem = inflater.inflate(R.layout.item_course, coursesContainer, false);
+
+            // Находим элементы
+            TextView title = courseItem.findViewById(R.id.course_title);
+            ImageView icon = courseItem.findViewById(R.id.course_icon);
+            View container = courseItem.findViewById(R.id.course_container);
+
+            // Устанавливаем данные
+            title.setText(course.getName());
+
+            // Иконка в зависимости от типа курса (пример)
+            icon.setImageResource(R.drawable.ic_book);
+
+            // Клик-лисенер
+            container.setOnClickListener(v -> {
                 Intent intent = new Intent(DashboardActivity.this, CourseActivity.class);
                 intent.putExtra("courseId", course.getId());
                 intent.putExtra("courseName", course.getName());
                 startActivity(intent);
             });
-            coursesContainer.addView(courseButton);
+
+            // Добавляем анимацию при нажатии
+            container.setOnTouchListener((v, event) -> {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start();
+                } else if (event.getAction() == MotionEvent.ACTION_UP ||
+                        event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+                }
+                return false;
+            });
+
+            coursesContainer.addView(courseItem);
         }
     }
 
@@ -274,13 +360,8 @@ public class DashboardActivity extends AppCompatActivity {
         runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
     }
 
-    private void schedule() {
-        startActivity(new Intent(this, ScheduleActivity.class));
-        finish();
-    }
-
     private void navigateToMainActivity() {
-        startActivity(new Intent(this, MainActivity.class));
+        startActivity(new Intent(this, MainScreen.class));
         finish();
     }
 

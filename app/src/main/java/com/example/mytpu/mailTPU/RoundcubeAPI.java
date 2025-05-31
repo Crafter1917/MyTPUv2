@@ -1,16 +1,33 @@
 package com.example.mytpu.mailTPU;
 
 import static com.example.mytpu.mailTPU.MailActivity.client;
+import static com.example.mytpu.mailTPU.MailActivity.context;
 import static com.example.mytpu.mailTPU.MailActivity.getCsrfToken;
 
+import static org.chromium.base.ContentUriUtils.getMimeType;
+import static org.chromium.base.ThreadUtils.runOnUiThread;
 import static java.nio.file.Files.createTempFile;
 
+import android.annotation.SuppressLint;
+import android.content.ContentResolver;
 import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.OpenableColumns;
+import android.text.Html;
+import android.text.TextUtils;
 import android.util.Log;
+import android.webkit.MimeTypeMap;
+import android.widget.Toast;
 
+import com.example.mytpu.R;
+import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.FileUtils;
+import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.IOUtils;
+
+import org.chromium.base.ContentUriUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -18,15 +35,20 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Entities;
+import org.jsoup.parser.Parser;
 import org.jsoup.safety.Safelist;
 import org.jsoup.select.Elements;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,34 +59,47 @@ import java.util.stream.Collectors;
 
 import okhttp3.Cookie;
 import okhttp3.FormBody;
+import okhttp3.Headers;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.HttpUrl;
+import okio.Buffer;
 
 public class RoundcubeAPI {
     private static final String TAG = "RoundcubeAPI";
-    private static final Safelist HTML_WHITELIST = Safelist.relaxed()
-            .addTags("a", "img", "span", "br")
-            .addAttributes("a", "href", "class", "download")
-            .addAttributes("img", "src", "alt", "style", "title")
-            .addAttributes("span", "class")
-            .preserveRelativeLinks(true);
     private static String emailId;
     public static Request request;
+    public static String BASE_URL = "https://letter.tpu.ru/mail/";
+    private static String fetchPreviewContent(OkHttpClient client, String csrfToken, String emailId, boolean allowRemote) throws IOException {
 
-    private static String fetchPreviewContent(OkHttpClient client, String csrfToken, String emailId) throws IOException {
-        HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
-                .addQueryParameter("_task", "mail")
-                .addQueryParameter("_action", "show")
-                .addQueryParameter("_uid", emailId)
-                .addQueryParameter("_mbox", "INBOX")
-                .addQueryParameter("_framed", "1")
-                .addQueryParameter("_token", csrfToken)
-                .build();
+        HttpUrl.Builder url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder();
+
+        if(allowRemote) {
+            url.addQueryParameter("_task", "mail")
+                    .addQueryParameter("_action", "show")
+                    .addQueryParameter("_uid", emailId)
+                    .addQueryParameter("_mbox", "INBOX")
+                    .addQueryParameter("_safe", "1")
+                    .addQueryParameter("_token", csrfToken);
+
+        } else {
+            url.addQueryParameter("_task", "mail")
+                    .addQueryParameter("_action", "show")
+                    .addQueryParameter("_uid", emailId)
+                    .addQueryParameter("_mbox", "INBOX")
+                    .addQueryParameter("_framed", "1")
+                    .addQueryParameter("_token", csrfToken);
+
+        }
+
+
 
         request = new Request.Builder()
-                .url(url)
+                .url(url.build())
                 .addHeader("accept", "text/html")
                 .build();
 
@@ -75,7 +110,7 @@ public class RoundcubeAPI {
     }
 
 
-    public static JSONArray fetchMessages(Context context, int currentPage)
+    public static JSONArray fetchMessages(Context context, int currentPage, String folder)
             throws IOException, JSONException, MailActivity.SessionExpiredException {
         Log.i(TAG, "Fetching messages list for page: " + currentPage);
         OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
@@ -84,7 +119,7 @@ public class RoundcubeAPI {
                 .addQueryParameter("_task", "mail")
                 .addQueryParameter("_action", "list")
                 .addQueryParameter("_layout", "widescreen") // Добавлено
-                .addQueryParameter("_mbox", "INBOX")
+                .addQueryParameter("_mbox", folder)
                 .addQueryParameter("_page", String.valueOf(currentPage))
                 .addQueryParameter("_remote", "1")
                 .addQueryParameter("_unlock", "loading" + System.currentTimeMillis()) // Добавлено
@@ -107,7 +142,14 @@ public class RoundcubeAPI {
             Log.d("API", "Response headers: " + response.headers());
             Log.d("API", "Full response: " + responseBody);
             handleResponseErrors(response, responseBody);
+            JSONObject jsonResponse = new JSONObject(responseBody);
 
+            if (jsonResponse.has("exec")) {
+                String exec = jsonResponse.getString("exec");
+                if (exec.contains("session_error")) {
+                    throw new MailActivity.SessionExpiredException("Session expired (server response)");
+                }
+            }
             return parseJsResponse(responseBody);
 
         } catch (TooManyAttemptsException e) {
@@ -152,7 +194,7 @@ public class RoundcubeAPI {
                 String processedJson = sanitizedJson.toString();
 
                 // Decode HTML entities and remove any remaining HTML tags
-                String decodedJson = org.jsoup.parser.Parser.unescapeEntities(processedJson, true);
+                String decodedJson = Parser.unescapeEntities(processedJson, true);
                 decodedJson = decodedJson.replaceAll("<[^>]+>", "");
 
                 JSONObject emailJson = new JSONObject(decodedJson);
@@ -180,6 +222,9 @@ public class RoundcubeAPI {
             throw new MailActivity.SessionExpiredException("Session expired (server response)");
         }
 
+        if (responseBody.contains("id=\"rcmloginform\"")) {
+            throw new MailActivity.SessionExpiredException("Требуется повторная авторизация");
+        }
         // Проверка кодов состояния
         if (response.code() == 401 && responseBody.contains("Too many attempts")) {
             throw new TooManyAttemptsException("Too many login attempts");
@@ -209,12 +254,12 @@ public class RoundcubeAPI {
         return builder.build();
     }
 
-    public static String fetchEmailContent(Context context, String emailId, AttachmentsCallback callback)
-            throws IOException {
+    public static String fetchEmailContent(Context context, String emailId, boolean allowRemote,
+                                           AttachmentsCallback callback) throws IOException {
         OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
         String csrfToken = MailActivity.refreshCsrfToken(context);
-        String mainContent = fetchPreviewContent(client, csrfToken, emailId);
-        return processHtmlContent(context, mainContent, emailId, csrfToken, callback); // Добавляем context
+        String mainContent = fetchPreviewContent(client, csrfToken, emailId, allowRemote);
+        return processHtmlContent(context, mainContent, emailId, csrfToken, callback);
     }
 
 
@@ -225,13 +270,21 @@ public class RoundcubeAPI {
             fixAllResourceUrls(doc, emailId, token);
             doc.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
             doc.outputSettings().charset("UTF-8");
+
+            // Дополнительные исправления HTML
+            doc.select("meta[http-equiv=Content-Security-Policy]").remove();
+
             // Извлекаем основной контейнер с телом письма
             Element messageBody = doc.selectFirst("#messagebody");
             OkHttpClient client = MailActivity.MyMailSingleton.getInstance(MailActivity.context).getClient();
 
             // RoundcubeAPI.java
             List<Attachment> attachments = parseAttachments(doc, emailId, token, client, callback);
-
+            boolean hasBlocked = html.contains("blocked.gif");
+            Log.d(TAG, "hasBlocked: "+hasBlocked);
+            if (callback != null) {
+                ((EmailDetailActivity)context).setHasBlockedResources(hasBlocked);
+            }
             // RoundcubeAPI.java
             if (callback != null) {
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -249,7 +302,7 @@ public class RoundcubeAPI {
                 messageBody.select("script, style, .image-attachment, .attachmentslist, .popupmenu, .header, .header-links").remove();
 
                 // Очищаем HTML с сохранением базовой структуры
-                String cleanContent = Jsoup.clean(messageBody.html(), HTML_WHITELIST);
+                String cleanContent = messageBody.html();
 
                 // Восстанавливаем важные inline-стили для изображений
                 Document cleanDoc = Jsoup.parseBodyFragment(cleanContent);
@@ -261,7 +314,7 @@ public class RoundcubeAPI {
                 return cleanDoc.body().html();
             } else {
                 Log.w(TAG, "Message body not found, using fallback");
-                return Jsoup.clean(html, HTML_WHITELIST);
+                return html;
             }
         } catch (Exception e) {
             Log.e(TAG, "HTML processing error", e);
@@ -292,7 +345,15 @@ public class RoundcubeAPI {
             img.attr("src", url);
             Log.d(TAG, "Replaced CID image: " + url);
         });
-
+        messageBody.select("*[style*='background-image']").forEach(el -> {
+            String style = el.attr("style");
+            Matcher m = Pattern.compile("url\\((.*?)\\)").matcher(style);
+            if (m.find()) {
+                String url = m.group(1).replaceAll("['\"]", "");
+                String fixedUrl = fixAttachmentUrl(url, emailId, token);
+                el.attr("style", style.replace(url, fixedUrl));
+            }
+        });
         // Обработка других изображений
         messageBody.select("img[src]").forEach(img -> {
             String src = img.attr("src");
@@ -374,7 +435,7 @@ public class RoundcubeAPI {
 
     private static String getFileExtension(String fileName) {
         int lastDot = fileName.lastIndexOf('.');
-        return (lastDot == -1) ? "" : fileName.substring(lastDot + 1);
+        return (lastDot == -1) ? "" : fileName.substring(lastDot + 1).replaceAll("[^a-zA-Z0-9]", "");
     }
 
     private static void processAttachment(String href, String fileName, String fileSize, boolean isImage,
@@ -459,7 +520,7 @@ public class RoundcubeAPI {
                 File tempFile = File.createTempFile(
                         "att_" + System.currentTimeMillis(),
                         "." + getFileExtension(fileName), // Добавьте точку перед расширением
-                        MailActivity.context.getCacheDir()
+                        context.getCacheDir()
                 );
                 tempFile.deleteOnExit();
                 Log.d(TAG, "📁 Temp file created: " + tempFile.getAbsolutePath());
@@ -556,82 +617,414 @@ public class RoundcubeAPI {
         }
     }
 
+    public static boolean sendComposedEmail(Context context, String to, String subject, String body,
+                                            List<Uri> attachments, String csrfToken) throws IOException {
+        try {
+            // 1. Создаем черновик
+            JSONObject composeData = createDraft(context, csrfToken);
+            String composeId = composeData.getString("id");
+            String from = composeData.getString("from");
+
+            // 2. Создаем multipart тело запроса с правильными параметрами
+            MultipartBody.Builder bodyBuilder = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("_task", "mail")
+                    .addFormDataPart("_action", "send")
+                    .addFormDataPart("_token", csrfToken)
+                    .addFormDataPart("_id", composeId)
+                    .addFormDataPart("_from", from)
+                    .addFormDataPart("_to", to)
+                    .addFormDataPart("_subject", subject)
+                    .addFormDataPart("_message", body)
+                    .addFormDataPart("_is_html", "1")
+                    .addFormDataPart("_priority", "0")
+                    .addFormDataPart("_store_target", "sent")
+                    .addFormDataPart("_sigid", "") // Добавляем обязательные пустые параметры
+                    .addFormDataPart("_draftid", "")
+                    .addFormDataPart("_cursor", "")
+                    .addFormDataPart("_spellang", "ru")
+                    .addFormDataPart("_request", "message-form");
+
+            // 3. Загружаем и добавляем вложения с правильным Content-Type
+            for (Uri uri : attachments) {
+                String fileName = getFileNameFromUri(context, uri);
+                String mimeType = getMimeType(context, uri);
+
+                try (InputStream is = context.getContentResolver().openInputStream(uri)) {
+                    byte[] fileData = IOUtils.toByteArray(is);
+
+                    bodyBuilder.addFormDataPart(
+                            "_attachments[]", // Roundcube требует именно такое имя параметра
+                            fileName,
+                            RequestBody.create(
+                                    fileData,
+                                    MediaType.parse(mimeType + "; charset=binary") // Добавляем charset
+                            )
+                    );
+                }
+            }
+
+            // 4. Формируем правильный Referer
+            HttpUrl composeUrl = HttpUrl.parse(BASE_URL).newBuilder()
+                    .addQueryParameter("_task", "mail")
+                    .addQueryParameter("_action", "compose")
+                    .addQueryParameter("_id", composeId)
+                    .build();
+
+            // 5. Отправляем запрос
+            Request request = new Request.Builder()
+                    .url(BASE_URL)
+                    .header("Referer", composeUrl.toString()) // Важно для Roundcube
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .post(bodyBuilder.build())
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                String responseBody = response.body().string();
+                Log.d(TAG, "Full server response: " + responseBody);
+
+                // Проверяем наличие ID сообщения в ответе
+                return responseBody.contains("\"message\":\"Сообщение отправлено\"")
+                        && responseBody.contains("\"sent\":true");
+            }
+        } catch (JSONException e) {
+            throw new IOException("Ошибка разбора данных", e);
+        }
+    }
 
 
-
-
-
-    public static boolean sendEmail(Context context, String emailId, String action,
-                                    String subject, String message, String csrfToken) throws IOException {
-
-        HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
+    private static JSONObject createDraft(Context context, String csrfToken) throws IOException, JSONException {
+        HttpUrl url = HttpUrl.parse(BASE_URL).newBuilder()
                 .addQueryParameter("_task", "mail")
                 .addQueryParameter("_action", "compose")
-                .addQueryParameter("_id", emailId)
                 .addQueryParameter("_token", csrfToken)
+                .addQueryParameter("_framed", "1")
                 .build();
-
-        FormBody.Builder formBuilder = new FormBody.Builder()
-                .add("_task", "mail")
-                .add("_action", "send")
-                .add("_token", csrfToken)
-                .add("_subject", subject)
-                .add("_message", message);
-
-        if ("reply".equals(action) || "reply_all".equals(action)) {
-            formBuilder.add("_mode", "reply");
-        } else if ("forward".equals(action)) {
-            formBuilder.add("_mode", "forward");
-        }
 
         Request request = new Request.Builder()
                 .url(url)
-                .post(formBuilder.build())
+                .header("X-Requested-With", "XMLHttpRequest")
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
-            return response.isSuccessful();
+            String html = response.body().string();
+            Document doc = Jsoup.parse(html);
+
+            JSONObject result = new JSONObject();
+            result.put("id", doc.selectFirst("input[name='_id']").attr("value"));
+            result.put("from", doc.selectFirst("select[name='_from'] option[selected]").attr("value"));
+
+            return result;
+        }
+    }
+    public static String getMimeType(Context context, Uri uri) {
+        String mimeType = context.getContentResolver().getType(uri);
+        if (mimeType == null) {
+            mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                    getFileExtension(getFileNameFromUri(context, uri))
+            );
+        }
+        return mimeType != null ? mimeType : "application/octet-stream";
+    }
+
+    @SuppressLint("Range")
+    private static String getFileNameFromUri(Context context, Uri uri) {
+        String fileName = null;
+        if (uri.getScheme().equals("content")) {
+            try (Cursor cursor = context.getContentResolver().query(
+                    uri,
+                    new String[]{OpenableColumns.DISPLAY_NAME},
+                    null,
+                    null,
+                    null
+            )) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    fileName = cursor.getString(cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting filename from ContentResolver", e);
+            }
+        }
+
+        if (fileName == null) {
+            fileName = uri.getLastPathSegment();
+        }
+
+        // Удаляем временные метки из имени файла
+        return fileName.replaceAll("%20", " ")
+                .replaceAll("[?].*", "");
+    }
+
+    private static byte[] readBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
+        int len;
+        while ((len = inputStream.read(buffer)) != -1) {
+            byteBuffer.write(buffer, 0, len);
+        }
+        return byteBuffer.toByteArray();
+    }
+
+
+    public static boolean forwardEmail(Context context,String emailId,String to,String subject,String body,List<Uri> attachments, String csrfToken
+    ) throws IOException {
+        if (csrfToken == null || csrfToken.isEmpty()) {
+            Log.e(TAG, "Invalid CSRF token for forwarding");
+            return false;
+        }
+
+        // 1. Загружаем страницу композиции для пересылки
+        HttpUrl composeUrl = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
+                .addQueryParameter("_task", "mail")
+                .addQueryParameter("_action", "compose")
+                .addQueryParameter("_forward_uid", emailId)
+                .addQueryParameter("_token", csrfToken)
+                .build();
+
+        String composeHtml;
+        try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
+            composeHtml = response.body().string();
+            if (!response.isSuccessful()) {
+                Log.e(TAG, "Ошибка загрузки страницы композиции: " + response.code());
+                return false;
+            }
+        }
+
+        // 2. Извлекаем параметры композиции
+        String composeId = extractFromHTML(composeHtml, "input[name='_id']");
+        String from = extractFromHTML(composeHtml, "select[name='_from'] option[selected]");
+
+        if (TextUtils.isEmpty(composeId) || TextUtils.isEmpty(from)) {
+            Log.e(TAG, "Не удалось извлечь параметры композиции");
+            return false;
+        }
+
+        // 3. Строим multipart запрос
+        MultipartBody.Builder bodyBuilder = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("_task", "mail")
+                .addFormDataPart("_action", "send")
+                .addFormDataPart("_token", csrfToken)
+                .addFormDataPart("_id", composeId)
+                .addFormDataPart("_from", from)
+                .addFormDataPart("_to", to)
+                .addFormDataPart("_subject", subject)
+                .addFormDataPart("_message", body)
+                .addFormDataPart("_is_html", "1")
+                .addFormDataPart("_mode", "forward")
+                .addFormDataPart("_forward_uid", emailId)
+                .addFormDataPart("_store_target", "sent");
+
+        // 4. Добавляем вложения
+        for (Uri uri : attachments) {
+            String fileName = getFileNameFromUri(context, uri);
+            try (InputStream is = context.getContentResolver().openInputStream(uri)) {
+                // Исправленный MIME-тип
+                String mimeType = ContentUriUtils.getMimeType(fileName);
+                if (TextUtils.isEmpty(mimeType)) {
+                    mimeType = "application/octet-stream";
+                }
+
+                byte[] fileData = IOUtils.toByteArray(is);
+                bodyBuilder.addFormDataPart(
+                        "_attachments[]",
+                        fileName,
+                        RequestBody.create(fileData, MediaType.parse(mimeType))
+                );
+            } catch (Exception e) {
+                Log.e(TAG, "Ошибка вложения: " + fileName, e);
+            }
+        }
+
+        // 5. Отправляем запрос
+        Request request = new Request.Builder()
+                .url("https://letter.tpu.ru/mail/")
+                .post(bodyBuilder.build())
+                .addHeader("Referer", composeUrl.toString())
+                .build();
+        Log.d(TAG, "отправкa:\n" + bodyBuilder);
+
+        try (Response response = client.newCall(request).execute()) {
+            String responseBody = response.body().string();
+            boolean success = response.isSuccessful() && responseBody.contains("Сообщение отправлено");
+
+            if (!success) {
+                Log.e(TAG, "Ошибка отправки. Ответ сервера:\n" + responseBody);
+            }
+            return success;
         }
     }
 
-    public static boolean deleteEmail(Context context, String emailId) throws IOException {
-        String csrfToken = MailActivity.refreshCsrfToken(context);
+    public static boolean sendEmail(Context context,String emailId,String userMessage,String csrfToken,List<Uri> attachments) throws IOException {
+        Log.d(TAG, "Starting sendEmail process");
 
-        HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
+        // 1. Загружаем форму ответа
+        HttpUrl composeUrl = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
                 .addQueryParameter("_task", "mail")
-                .addQueryParameter("_action", "delete")
-                .addQueryParameter("_uid", emailId)
+                .addQueryParameter("_action", "compose")
+                .addQueryParameter("_reply_uid", emailId)
+                .addQueryParameter("_mbox", "INBOX")
                 .addQueryParameter("_token", csrfToken)
                 .build();
 
-        Request request = new Request.Builder()
-                .url(url)
-                .post(new FormBody.Builder().build())
-                .build();
+        try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
+            String html = response.body().string();
+            Log.d(TAG, "Compose page HTML length: " + html.length());
 
-        try (Response response = client.newCall(request).execute()) {
-            return response.isSuccessful();
+            // 2. Сохраняем HTML для отладки
+            saveDebugHtml(context, html);
+
+            // 3. Извлекаем основные параметры
+            String from = extractFromHTML(html, "select[name='_from'] option[selected]");
+            String to = extractFromHTML(html, "textarea[name='_to']");
+            String subject = extractFromHTML(html, "input[name='_subject']");
+            String content = extractFromHTML(html, "textarea[name='_message']");
+            String composeId = extractFromHTML(html, "input[name='_id']");
+
+            // 4. Извлекаем дополнительные скрытые поля
+            String sigId = extractFromHTML(html, "input[name='_sigid']");
+            String spellLang = extractFromHTML(html, "input[name='_spellang']");
+            String spellKey = extractFromHTML(html, "input[name='_spellkey']");
+            String cursor = extractFromHTML(html, "input[name='_cursor']");
+            String draftId = extractFromHTML(html, "input[name='_draftid']");
+            String replyAll = extractFromHTML(html, "input[name='_replyall']");
+            String priority = extractFromHTML(html, "input[name='_priority']");
+            String isSent = extractFromHTML(html, "input[name='_is_sent']");
+
+            // 6. Формируем multipart запрос
+            MultipartBody.Builder bodyBuilder = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("_task", "mail")
+                    .addFormDataPart("_action", "send")
+                    .addFormDataPart("_token", csrfToken)
+                    .addFormDataPart("_id", composeId)
+                    .addFormDataPart("_from", from)
+                    .addFormDataPart("_to", to)
+                    .addFormDataPart("_subject", formatSubject(subject))
+                    .addFormDataPart("_message", content + "\n\n" + userMessage)
+                    .addFormDataPart("_mode", "reply")
+                    .addFormDataPart("_reply_uid", emailId)
+                    .addFormDataPart("_sigid", sigId)
+                    .addFormDataPart("_spellang", spellLang)
+                    .addFormDataPart("_spellkey", spellKey)
+                    .addFormDataPart("_cursor", cursor)
+                    .addFormDataPart("_draftid", draftId)
+                    .addFormDataPart("_replyall", replyAll)
+                    .addFormDataPart("_priority", !priority.isEmpty() ? priority : "0")
+                    .addFormDataPart("_is_sent", !isSent.isEmpty() ? isSent : "1")
+                    .addFormDataPart("_store_target", "sent")
+                    .addFormDataPart("_request", "message-form");
+
+            // 7. Добавляем вложения
+            for(Uri uri : attachments) {
+                try (InputStream inputStream = context.getContentResolver().openInputStream(Uri.parse(String.valueOf(uri)))) {
+                    String mimeType = context.getContentResolver().getType(Uri.parse(String.valueOf(uri)));
+                    String fileName = getFileNameFromUri(context, Uri.parse(String.valueOf(uri)));
+
+                    // Читаем содержимое файла
+                    byte[] fileData = readBytes(inputStream);
+                    if (fileData.length == 0) {
+                        Log.e(TAG, "Empty file: " + fileName);
+                        continue;
+                    }
+
+                    RequestBody fileBody = RequestBody.create(
+                            fileData,
+                            MediaType.parse(mimeType != null ? mimeType : "application/octet-stream")
+                    );
+
+                    bodyBuilder.addFormDataPart(
+                            "_attachments[]",
+                            fileName,
+                            fileBody
+                    );
+                } catch (Exception e) {
+                    Log.e(TAG, "Error processing attachment: " + e.getMessage());
+                }
+            }
+
+            Request request = new Request.Builder()
+                    .url("https://letter.tpu.ru/mail/")
+                    .post(bodyBuilder.build())
+                    .addHeader("Referer", composeUrl.toString())
+                    .addHeader("X-Requested-With", "XMLHttpRequest")
+                    .build();
+
+            // 8. Логируем тело запроса
+            logRequestBody(bodyBuilder.build());
+
+            // 9. Отправляем запрос
+            try (Response sendResponse = client.newCall(request).execute()) {
+                String responseBody = sendResponse.body().string();
+                Log.d(TAG, "Server response code: " + sendResponse.code());
+                Log.d(TAG, "Response body snippet: " + responseBody.substring(0, Math.min(200, responseBody.length())));
+
+                boolean success = responseBody.contains("Сообщение отправлено");
+
+                if (!success) {
+                    Log.e(TAG, "Error details:\n" + responseBody);
+                    if (responseBody.contains("invalid token")) {
+                        MailActivity.handleCsrfError(context);
+                    }
+                }
+
+                return success;
+            }
         }
     }
 
-    public static boolean markAsUnread(Context context, String emailId) throws IOException {
-        String csrfToken = MailActivity.refreshCsrfToken(context);
-
-        HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
-                .addQueryParameter("_task", "mail")
-                .addQueryParameter("_action", "setflag")
-                .addQueryParameter("_uid", emailId)
-                .addQueryParameter("_flag", "unread")
-                .addQueryParameter("_token", csrfToken)
-                .build();
-
-        Request request = new Request.Builder()
-                .url(url)
-                .post(new FormBody.Builder().build())
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            return response.isSuccessful();
+    private static String formatSubject(String originalSubject) {
+        if (originalSubject.startsWith("Re: ")) {
+            return originalSubject; // Не добавляем повторно
         }
+        return "Re: " + originalSubject;
+    }
+    // Вспомогательные методы
+    private static void saveDebugHtml(Context context, String html) {
+        try {
+            File file = new File(context.getExternalFilesDir(null), "last_compose.html");
+            FileUtils.writeStringToFile(file, html, StandardCharsets.UTF_8);
+            Log.d(TAG, "Full HTML saved to: " + file.getAbsolutePath());
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving HTML", e);
+        }
+    }
+
+    // Замените блок логирования тела запроса:
+    private static void logRequestBody(RequestBody body) {
+        try {
+            Buffer buffer = new Buffer();
+            body.writeTo(buffer);
+            Log.d(TAG, "Request body:\n" + buffer.readUtf8());
+        } catch (IOException e) {
+            Log.e(TAG, "Error logging request body", e);
+        }
+    }
+
+    private static String extractFromHTML(String html, String selector) {
+        try {
+            Document doc = Jsoup.parse(html);
+            Element element = doc.selectFirst(selector);
+
+            if (element != null) {
+                String value = element.hasAttr("value")
+                        ? element.attr("value")
+                        : element.text().trim();
+                Log.d(TAG, "Extracted value for " + selector + ": " + value);
+                return value;
+            }
+
+            // Добавляем поиск по ID если не найден по имени
+            if (selector.equals("input[name='_id']")) {
+                element = doc.selectFirst("input#_id");
+                if (element != null) {
+                    return element.attr("value");
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "HTML parsing error: " + e.getMessage());
+        }
+        Log.w(TAG, "Element not found with selector: " + selector);
+        return "";
     }
 }

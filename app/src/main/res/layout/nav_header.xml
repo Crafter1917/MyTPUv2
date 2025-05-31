@@ -3,11 +3,12 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="176dp"
-    android:background="@color/colorPrimary"
-    android:gravity="bottom"
+    android:layout_height="wrap_content"
+    android:background="@color/design_default_color_primary"
+    android:gravity="center"
+    android:fitsSystemWindows="true"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="24dp">
 
     <ImageView
         android:layout_width="72dp"
@@ -16,10 +17,11 @@
         android:contentDescription="Профиль"/>
 
     <TextView
-        android:layout_width="match_parent"
+        android:id="@+id/textViewEmail"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="user@example.com"
+        android:text="user@tpu.ru"
         android:textColor="@android:color/white"
         android:textSize="14sp"/>
 

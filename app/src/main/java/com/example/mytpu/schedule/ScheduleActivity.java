@@ -1,9 +1,23 @@
 package com.example.mytpu.schedule;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static com.example.mytpu.schedule.AlarmScheduler.KEY_ALARM_SETTINGS;
+
+import android.app.AlertDialog;
+import android.database.Cursor;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
-
+import android.Manifest;
+import android.accounts.AccountManager;
+import android.content.pm.PackageManager;
+import android.provider.CalendarContract;
+import android.provider.CalendarContract.Events;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.net.Uri;
+import androidx.core.app.ActivityCompat;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -59,7 +73,8 @@ import com.example.mytpu.R;
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final int DAYS_IN_WEEK = 7;
-    // В классе ScheduleActivity добавьте:
+    private static final int PERMISSION_REQUEST_CALENDAR = 101;
+    private static final int ACCOUNT_REQUEST_CODE = 102;
     private LinearLayout scheduleContainer;
     private int lastSelectedWeek = -1;
     private boolean isScrollingRight = true;
@@ -112,6 +127,11 @@ public class ScheduleActivity extends AppCompatActivity {
             Log.e(TAG, "scheduleContainer not found!");
             return;
         }
+        final int callbackId = 42;
+
+        findViewById(R.id.btnSyncCalendar).setOnClickListener(v -> checkPermission(callbackId, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR));
+        findViewById(R.id.btnUnsyncCalendar).setOnClickListener(v -> unsyncCalendar());
+        findViewById(R.id.btnAlarmSettings).setOnClickListener(v -> showAlarmDialog());
         File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
         if (!documentsDir.exists()) documentsDir.mkdirs();
         sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -180,7 +200,78 @@ public class ScheduleActivity extends AppCompatActivity {
         setupSearchField();
         setupWorkManager();
     }
+    private void unsyncCalendar() {
+        new Thread(() -> {
+            try {
+                deleteExistingEvents();
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Все события удалены из календаря", Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Ошибка удаления: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
 
+    @SuppressLint("ScheduleExactAlarm")
+    private void showAlarmDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_alarm, null);
+
+        CheckBox[] paraCheckBoxes = {
+                view.findViewById(R.id.para1),
+                view.findViewById(R.id.para2),
+                view.findViewById(R.id.para3),
+                view.findViewById(R.id.para4),
+                view.findViewById(R.id.para5),
+                view.findViewById(R.id.para6)
+        };
+
+        CheckBox currentSearchOnly = view.findViewById(R.id.currentSearchOnly);
+        Button saveButton = view.findViewById(R.id.saveButton);
+
+        // Загрузка сохраненных настроек
+        boolean[] savedSettings = AlarmScheduler.getSavedSettings(this);
+        for (int i = 0; i < 6; i++) {
+            paraCheckBoxes[i].setChecked(savedSettings[i]);
+        }
+        currentSearchOnly.setChecked(savedSettings[6]);
+
+        builder.setView(view);
+        AlertDialog dialog = builder.create();
+
+        // В методе showAlarmDialog():
+        // В методе showAlarmDialog() внутри saveButton.setOnClickListener:
+        saveButton.setOnClickListener(v -> {
+            boolean[] selectedParas = new boolean[6];
+            for (int i = 0; i < 6; i++) {
+                selectedParas[i] = paraCheckBoxes[i].isChecked();
+            }
+            boolean forCurrentSearch = currentSearchOnly.isChecked();
+
+            // Сохраняем настройки
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putString(KEY_ALARM_SETTINGS,
+                    TextUtils.join(",", Collections.singleton(selectedParas)) + "," + forCurrentSearch);
+            editor.apply();
+
+            // Существующий код установки будильников
+            List<LessonData> allLessons = new ArrayList<>();
+            for (List<LessonData> lessons : groupedLessonsMap.values()) {
+                allLessons.addAll(lessons);
+            }
+
+            AlarmScheduler.scheduleAlarms(
+                    ScheduleActivity.this,
+                    allLessons,
+                    selectedParas
+            );
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
     private void animateScheduleTransition(boolean scrollRight) {
         int outAnim = scrollRight ? R.anim.slide_left_out : R.anim.slide_right_out;
         int inAnim = scrollRight ? R.anim.slide_right_in : R.anim.slide_left_in;
@@ -226,6 +317,7 @@ public class ScheduleActivity extends AppCompatActivity {
 
         scheduleContainer.startAnimation(out);
     }
+
     private void createDayCards() {
         Log.d(TAG, "Creating day cards...");
 
@@ -414,7 +506,124 @@ public class ScheduleActivity extends AppCompatActivity {
 
     }
 
-    // Новые методы
+    private void checkPermission(int callbackId, String... permissionsId) {
+        boolean permissions = true;
+        for (String p : permissionsId) {
+            permissions = permissions && ContextCompat.checkSelfPermission(this, p) == PERMISSION_GRANTED;
+        }
+
+        if (!permissions)
+            ActivityCompat.requestPermissions(this, permissionsId, callbackId);
+        syncWithGoogleCalendar();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CALENDAR) {
+            if (grantResults.length > 0 && grantResults[0] == PERMISSION_GRANTED) {
+                syncWithGoogleCalendar();
+            } else {
+                Toast.makeText(this, "Требуется разрешение для работы с календарем", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+    private void deleteExistingEvents() throws Exception {
+        ContentResolver cr = getContentResolver();
+        Uri uri = Events.CONTENT_URI;
+        String selection = Events.DESCRIPTION + " LIKE ?";
+        String[] selectionArgs = new String[]{"%Синхронизировано через MyApp%"};
+
+        int deletedRows = cr.delete(uri, selection, selectionArgs);
+        Log.i(TAG, "Удалено событий: " + deletedRows);
+    }
+    private void syncWithGoogleCalendar() {
+
+
+        if (groupedLessonsMap.isEmpty()) {
+            Toast.makeText(this, "Нет данных для синхронизации", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                // Удаляем старые события
+                deleteExistingEvents();
+
+                // Добавляем новые события
+                List<LessonData> allLessons = new ArrayList<>();
+                for (List<LessonData> lessons : groupedLessonsMap.values()) {
+                    allLessons.addAll(lessons);
+                }
+
+                for (LessonData lesson : allLessons) {
+                    addEventToCalendar(lesson);
+                }
+
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Расписание синхронизировано с Google Календарем", Toast.LENGTH_LONG).show());
+            } catch (Exception e) {
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Ошибка синхронизации: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                Log.e(TAG,"Ошибка синхронизации: "+e);
+            }
+        }).start();
+    }
+
+    private void addEventToCalendar(LessonData lesson) {
+        ContentResolver cr = getContentResolver();
+        ContentValues values = new ContentValues();
+
+        values.put(Events.DTSTART, lesson.startTime.getTime());
+        values.put(Events.DTEND, lesson.endTime.getTime());
+        values.put(Events.TITLE, lesson.subject);
+        values.put(Events.DESCRIPTION,
+                "Аудитория: " + lesson.audience + "\n" +
+                        "Преподаватель: " + lesson.teacher + "\n" +
+                        "Тип занятия: " + lesson.type + "\n" +
+                        "Синхронизировано через MyApp"); // Уникальный маркер
+        values.put(Events.CALENDAR_ID, getPrimaryCalendarId());
+        values.put(Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
+
+        // Правило повтора
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(lesson.startTime);
+        int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
+        values.put(Events.RRULE, "FREQ=WEEKLY;BYDAY=" + getDayAbbreviation(dayOfWeek) + ";COUNT=16");
+
+        cr.insert(Events.CONTENT_URI, values);
+    }
+
+    private String getDayAbbreviation(int dayOfWeek) {
+        switch (dayOfWeek) {
+            case Calendar.MONDAY: return "MO";
+            case Calendar.TUESDAY: return "TU";
+            case Calendar.WEDNESDAY: return "WE";
+            case Calendar.THURSDAY: return "TH";
+            case Calendar.FRIDAY: return "FR";
+            case Calendar.SATURDAY: return "SA";
+            case Calendar.SUNDAY: return "SU";
+            default: return "MO";
+        }
+    }
+
+    private long getPrimaryCalendarId() {
+        Cursor cursor = getContentResolver().query(
+                CalendarContract.Calendars.CONTENT_URI,
+                new String[]{CalendarContract.Calendars._ID},
+                CalendarContract.Calendars.IS_PRIMARY + "=1",
+                null,
+                null
+        );
+
+        if (cursor != null && cursor.moveToFirst()) {
+            long id = cursor.getLong(0);
+            cursor.close();
+            return id;
+        }
+        return 1; // fallback
+    }
+
     private List<WeekWheelAdapter.WeekItem> generateWeeks() {
         List<WeekWheelAdapter.WeekItem> weeks = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
@@ -932,8 +1141,8 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void updateDayVisibility() {
-        int activeColor = ContextCompat.getColor(this, R.color.activeDayBackground);
-        int normalColor = ContextCompat.getColor(this, R.color.cardBackground);
+        int activeColor = ContextCompat.getColor(this, R.color.active_day_background);
+        int normalColor = ContextCompat.getColor(this, R.color.card_background);
 
         Calendar calendar = Calendar.getInstance();
         int currentDay = (calendar.get(Calendar.DAY_OF_WEEK) - 2);
@@ -949,11 +1158,9 @@ public class ScheduleActivity extends AppCompatActivity {
             card.setVisibility(hasLesson ? View.VISIBLE : View.GONE);
 
             if (isToday) {
-                card.setCardBackgroundColor(activeColor);
-                card.setCardElevation(8f);
+                card.setBackgroundResource(R.drawable.border);
             } else {
-                card.setCardBackgroundColor(normalColor);
-                card.setCardElevation(2f);
+                card.setBackgroundResource(R.drawable.borderweek);
             }
         }
     }
@@ -986,6 +1193,7 @@ public class ScheduleActivity extends AppCompatActivity {
                 }
 
                 runOnUiThread(() -> {
+                    updateAlarms(); // Добавьте эту строку
                     updateDayDates();
                     redrawScheduleUI();
                 });
@@ -1025,7 +1233,17 @@ public class ScheduleActivity extends AppCompatActivity {
             updateDayVisibility();
         });
     }
+    // ScheduleActivity.java
+    @SuppressLint("ScheduleExactAlarm")
+    private void updateAlarms() {
+        List<LessonData> allLessons = new ArrayList<>();
+        for (List<LessonData> lessons : groupedLessonsMap.values()) {
+            allLessons.addAll(lessons);
+        }
 
+        boolean[] selectedParas = AlarmScheduler.getSavedSettings(this);
+        AlarmScheduler.scheduleAlarms(this, allLessons, selectedParas);
+    }
     private void addGroupedLessonsToUI(List<LessonData> lessons) {
         if (lessons == null || lessons.isEmpty()) return;
 
@@ -1165,15 +1383,23 @@ public class ScheduleActivity extends AppCompatActivity {
             String startTime = time.getString("start");
             String endTime = time.getString("end");
             String lessonTime = startTime + " - " + endTime;
+            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
+            Date startTimeD = timeFormat.parse(time.getString("start"));
+            Date endTimeD = timeFormat.parse(time.getString("end"));
+
+            int paraNumber = determineParaNumber(lessonTime);
 
             return new LessonData(
+                    startTimeD,
+                    endTimeD,
                     lesson.getString("subject"),
                     lesson.getString("type"),
                     lesson.optInt("subgroups", 0),
-                    lessonTime, // <--- Передаем время
+                    lessonTime,
                     getAudience(lesson.getJSONArray("audiences")),
                     getTeacher(lesson.getJSONArray("teachers")),
-                    weekday
+                    weekday,
+                    paraNumber // Передаем номер пары
             );
 
         } catch (ParseException | JSONException e) {
@@ -1206,7 +1432,7 @@ public class ScheduleActivity extends AppCompatActivity {
         card.setCardElevation(dpToPx(1));
         card.setRadius(dpToPx(6));
         card.setContentPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
-        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.cardBackground));
+        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.card_background));
 
         // Основной контейнер
         LinearLayout mainContainer = new LinearLayout(this);
@@ -1240,7 +1466,7 @@ public class ScheduleActivity extends AppCompatActivity {
         paraNumberView.setText("Пара " + paraNumber);
         paraNumberView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         paraNumberView.setTypeface(null, Typeface.BOLD);
-        paraNumberView.setTextColor(ContextCompat.getColor(this, R.color.primaryDarkColor));
+        paraNumberView.setTextColor(ContextCompat.getColor(this,R.color.textSecondary));
 
         leftPart.addView(paraNumberView);
 
@@ -1463,23 +1689,30 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     static class LessonData {
+        Date startTime;
+        Date endTime;
         String subject;
         String type;
         int subgroups;
-        String time; // <--- Добавляем поле
+        String time;
         String audience;
         String teacher;
         int weekday;
+        int paraNumber; // Добавленное поле
 
-        LessonData(String subject, String type, int subgroups, String time,
-                   String audience, String teacher, int weekday) {
+        LessonData(Date startTime, Date endTime, String subject, String type,
+                   int subgroups, String time, String audience, String teacher,
+                   int weekday, int paraNumber) {
+            this.startTime = startTime;
+            this.endTime = endTime;
             this.subject = subject;
             this.type = type;
             this.subgroups = subgroups;
-            this.time = time; // <--- Инициализируем
+            this.time = time;
             this.audience = audience;
             this.teacher = teacher;
             this.weekday = weekday;
+            this.paraNumber = paraNumber;
         }
     }
 }

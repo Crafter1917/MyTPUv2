@@ -1,0 +1,24 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.MyTPU" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/darkgreentpu</item>
+        <item name="colorPrimaryVariant">@color/blackishgreentpu</item>
+        <item name="colorOnPrimary">@color/blackgreentpu</item>
+
+        <item name="colorSecondary">@color/greentpu</item>
+        <item name="colorSecondaryVariant">@color/white</item>
+        <item name="colorOnSecondary">@color/black</item>
+
+        <item name="android:windowBackground">@color/blackgreentpu</item>
+        <item name="instituteLogo">@drawable/logo_dark</item>
+        <!-- Общие настройки шрифтов -->
+        <item name="fontFamily">@font/sirius_regular</item>
+
+        <!-- Переопределение текстовых стилей -->
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.App.Headline</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.App.Headline</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.App.Body</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.App.Body</item>
+        <item name="textAppearanceButton">@style/TextAppearance.App.Button</item>
+    </style>
+</resources>

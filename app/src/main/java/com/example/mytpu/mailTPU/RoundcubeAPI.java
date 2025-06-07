@@ -162,7 +162,7 @@ public class RoundcubeAPI {
         JSONArray result = new JSONArray();
         // Updated regex to accurately capture the email object between { and }, followed by , {
         Pattern pattern = Pattern.compile(
-                "this\\.add_message_row\\((\\d+),\\s*(\\{.*?\\})\\s*,\\s*\\{",
+                "this\\.add_message_row\\((\\d+),\\s*(\\{.*?\\})\\s*,\\s*\\{.*?\\}\\s*,\\s*(true|false)\\);",
                 Pattern.DOTALL
         );
         Matcher matcher = pattern.matcher(jsCode);
@@ -182,7 +182,6 @@ public class RoundcubeAPI {
                 Matcher valueMatcher = valuePattern.matcher(rawJson);
                 while (valueMatcher.find()) {
                     String valueContent = valueMatcher.group(1);
-                    // Escape all unescaped quotes within the string value
                     String escapedContent = valueContent.replace("\"", "\\\"");
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                         valueMatcher.appendReplacement(sanitizedJson, ":\"" + escapedContent + "\"");
@@ -192,8 +191,6 @@ public class RoundcubeAPI {
                     valueMatcher.appendTail(sanitizedJson);
                 }
                 String processedJson = sanitizedJson.toString();
-
-                // Decode HTML entities and remove any remaining HTML tags
                 String decodedJson = Parser.unescapeEntities(processedJson, true);
                 decodedJson = decodedJson.replaceAll("<[^>]+>", "");
 

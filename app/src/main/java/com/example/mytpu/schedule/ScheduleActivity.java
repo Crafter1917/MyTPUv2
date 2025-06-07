@@ -1,12 +1,17 @@
 package com.example.mytpu.schedule;
 
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-import static com.example.mytpu.schedule.AlarmScheduler.KEY_ALARM_SETTINGS;
 
+import android.accounts.Account;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Typeface;
+import android.media.RingtoneManager;
 import android.os.Build;
+import android.os.Handler;
+import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.Manifest;
@@ -25,6 +30,7 @@ import android.os.Environment;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.view.inputmethod.InputMethodManager;
@@ -67,14 +73,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import com.example.mytpu.R;
+import com.google.android.gms.common.AccountPicker;
 
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final int DAYS_IN_WEEK = 7;
     private static final int PERMISSION_REQUEST_CALENDAR = 101;
     private static final int ACCOUNT_REQUEST_CODE = 102;
+    private static final int REQUEST_CODE_ALARM_SOUND = 1001;
     private LinearLayout scheduleContainer;
     private int lastSelectedWeek = -1;
     private boolean isScrollingRight = true;
@@ -116,11 +125,73 @@ public class ScheduleActivity extends AppCompatActivity {
     private List<TextView> dayHeaders = new ArrayList<>();
     private List<LinearLayout> lessonContainers = new ArrayList<>();
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CODE_ALARM_SOUND && resultCode == RESULT_OK) {
+            Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            if (ringtoneUri != null) {
+                SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+                prefs.edit().putString("alarm_sound_uri", ringtoneUri.toString()).apply();
+            }
+        }
+        else if (requestCode == ACCOUNT_REQUEST_CODE) {
+            Log.d(TAG, "Returned from account addition flow");
+            checkAccountWithRetry(10, 500); // 10 попыток с интервалом 500мс
+        }
+    }
 
+    private void checkAccountWithRetry(int maxAttempts, long delayMillis) {
+        new Handler().postDelayed(new Runnable() {
+            int attempts = 0;
+            @Override
+            public void run() {
+                if (hasGoogleAccount()) {
+                    Log.d(TAG, "Account added successfully, syncing...");
+                    syncWithGoogleCalendar();
+                } else if (attempts < maxAttempts) {
+                    attempts++;
+                    Log.d(TAG, "Retry account check (" + attempts + "/" + maxAttempts + ")");
+                    new Handler().postDelayed(this, delayMillis);
+                } else {
+                    Log.w(TAG, "No Google account added after flow");
+                    runOnUiThread(() -> Toast.makeText(
+                            ScheduleActivity.this,
+                            "Аккаунт не был добавлен или не обнаружен",
+                            Toast.LENGTH_SHORT
+                    ).show());
+                }
+            }
+        }, delayMillis);
+    }
+
+    private void showAddAccountDialog() {
+        Log.d(TAG, "Showing account picker dialog");
+        try {
+            Intent intent = AccountPicker.newChooseAccountIntent(
+                    null, // Selected account (null для выбора по умолчанию)
+                    null, // Допустимые аккаунты (null для всех)
+                    new String[]{"com.google"}, // Только Google-аккаунты
+                    false, // Всегда показывать диалог
+                    null, // Текст описания
+                    null, // Auth token type
+                    null, // Required features
+                    null  // Дополнительные параметры
+            );
+            startActivityForResult(intent, ACCOUNT_REQUEST_CODE);
+        } catch (ActivityNotFoundException e) {
+            Log.e(TAG, "Account picker not found", e);
+            // Fallback для старых устройств
+            Intent intent = new Intent(Settings.ACTION_ADD_ACCOUNT);
+            intent.putExtra(Settings.EXTRA_ACCOUNT_TYPES, new String[]{"com.google"});
+            startActivityForResult(intent, ACCOUNT_REQUEST_CODE);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        checkPermissions();
         setContentView(R.layout.activity_schedule);
         scheduleContainer = findViewById(R.id.scheduleContainer);
         if (scheduleContainer == null) {
@@ -128,8 +199,26 @@ public class ScheduleActivity extends AppCompatActivity {
             return;
         }
         final int callbackId = 42;
-
-        findViewById(R.id.btnSyncCalendar).setOnClickListener(v -> checkPermission(callbackId, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        } else {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                    | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
+        findViewById(R.id.btnSyncCalendar).setOnClickListener(v -> {
+            checkPermission(
+                    PERMISSION_REQUEST_CALENDAR,
+                    Manifest.permission.READ_CALENDAR,
+                    Manifest.permission.WRITE_CALENDAR,
+                    Manifest.permission.GET_ACCOUNTS // Добавляем разрешение для аккаунтов
+            );
+            if (currentSearchQuery.isEmpty()) {
+                Toast.makeText(this, "Сначала выберите группу/преподавателя", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            syncWithGoogleCalendar();
+        });
         findViewById(R.id.btnUnsyncCalendar).setOnClickListener(v -> unsyncCalendar());
         findViewById(R.id.btnAlarmSettings).setOnClickListener(v -> showAlarmDialog());
         File documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
@@ -198,80 +287,169 @@ public class ScheduleActivity extends AppCompatActivity {
         setupWeekWheel();
         setupCurrentDateButton();
         setupSearchField();
-        setupWorkManager();
     }
+
     private void unsyncCalendar() {
         new Thread(() -> {
             try {
-                deleteExistingEvents();
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Все события удалены из календаря", Toast.LENGTH_LONG).show());
+                // Удаляем ВСЕ события приложения
+                deleteAllAppEvents();
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        "Все события удалены из календаря",
+                        Toast.LENGTH_LONG
+                ).show());
+
             } catch (Exception e) {
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Ошибка удаления: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        "Ошибка удаления: " + e.getMessage(),
+                        Toast.LENGTH_LONG
+                ).show());
             }
         }).start();
+    }
+
+    private void deleteAllAppEvents() throws Exception {
+        ContentResolver cr = getContentResolver();
+        Uri uri = CalendarContract.Events.CONTENT_URI;
+        String selection = Events.DESCRIPTION + " LIKE ?";
+        String[] selectionArgs = new String[]{"%Синхронизировано через MyApp%"};
+
+        int deletedRows = cr.delete(uri, selection, selectionArgs);
+        Log.i(TAG, "Удалено всех событий: " + deletedRows);
     }
 
     @SuppressLint("ScheduleExactAlarm")
     private void showAlarmDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_alarm, null);
+        Button btnSelectSound = view.findViewById(R.id.btnSelectSound);
 
-        CheckBox[] paraCheckBoxes = {
-                view.findViewById(R.id.para1),
-                view.findViewById(R.id.para2),
-                view.findViewById(R.id.para3),
-                view.findViewById(R.id.para4),
-                view.findViewById(R.id.para5),
-                view.findViewById(R.id.para6)
-        };
-
+        EditText minutesInput = view.findViewById(R.id.minutesInput);
         CheckBox currentSearchOnly = view.findViewById(R.id.currentSearchOnly);
+        Switch switchAlarm = view.findViewById(R.id.switchAlarm);
+        Switch switchNotifications = view.findViewById(R.id.switchNotifications);
         Button saveButton = view.findViewById(R.id.saveButton);
 
-        // Загрузка сохраненных настроек
-        boolean[] savedSettings = AlarmScheduler.getSavedSettings(this);
-        for (int i = 0; i < 6; i++) {
-            paraCheckBoxes[i].setChecked(savedSettings[i]);
-        }
-        currentSearchOnly.setChecked(savedSettings[6]);
+        SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+        int savedMinutes = prefs.getInt("alarm_minutes", 30);
+        boolean alarmEnabled = prefs.getBoolean("alarm_enabled", true);
+        boolean notificationsEnabled = prefs.getBoolean("notifications_enabled", true);
+        boolean forCurrentSearch = prefs.getBoolean("forCurrentSearch", false);
+        btnSelectSound.setOnClickListener(v -> {
+            Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM);
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Выберите звук будильника");
+            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                    Uri.parse(prefs.getString("alarm_sound_uri", "")));
+            startActivityForResult(intent, REQUEST_CODE_ALARM_SOUND);
+        });
+        minutesInput.setText(String.valueOf(savedMinutes));
+        switchAlarm.setChecked(alarmEnabled);
+        switchNotifications.setChecked(notificationsEnabled);
+        currentSearchOnly.setChecked(forCurrentSearch);
 
         builder.setView(view);
         AlertDialog dialog = builder.create();
 
-        // В методе showAlarmDialog():
-        // В методе showAlarmDialog() внутри saveButton.setOnClickListener:
         saveButton.setOnClickListener(v -> {
-            boolean[] selectedParas = new boolean[6];
-            for (int i = 0; i < 6; i++) {
-                selectedParas[i] = paraCheckBoxes[i].isChecked();
+            int minutesBefore;
+            try {
+                minutesBefore = Integer.parseInt(minutesInput.getText().toString());
+                if (minutesBefore < 1) minutesBefore = 1;
+                if (minutesBefore > 1440) minutesBefore = 1440;
+            } catch (NumberFormatException e) {
+                minutesBefore = 30;
             }
-            boolean forCurrentSearch = currentSearchOnly.isChecked();
 
-            // Сохраняем настройки
-            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            boolean isAlarmEnabled = switchAlarm.isChecked();
+            boolean isNotificationsEnabled = switchNotifications.isChecked();
+            boolean isForCurrentSearch = currentSearchOnly.isChecked();
+
             SharedPreferences.Editor editor = prefs.edit();
-            editor.putString(KEY_ALARM_SETTINGS,
-                    TextUtils.join(",", Collections.singleton(selectedParas)) + "," + forCurrentSearch);
+            editor.putInt("alarm_minutes", minutesBefore);
+            editor.putBoolean("alarm_enabled", isAlarmEnabled);
+            editor.putBoolean("notifications_enabled", isNotificationsEnabled);
+            editor.putBoolean("forCurrentSearch", isForCurrentSearch);
             editor.apply();
 
-            // Существующий код установки будильников
-            List<LessonData> allLessons = new ArrayList<>();
-            for (List<LessonData> lessons : groupedLessonsMap.values()) {
-                allLessons.addAll(lessons);
+            // Обновляем будильники при изменении настроек
+            if (isAlarmEnabled || isNotificationsEnabled) {
+                updateAlarms();
+            } else {
+                AlarmScheduler.cancelAllAlarms(this);
             }
-
-            AlarmScheduler.scheduleAlarms(
-                    ScheduleActivity.this,
-                    allLessons,
-                    selectedParas
-            );
+            updateAlarms();
             dialog.dismiss();
         });
 
         dialog.show();
     }
+
+    @SuppressLint("ScheduleExactAlarm")
+    private void updateAlarms() {
+        Log.d(TAG, "Updating alarms...");
+
+        SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+        boolean isAlarmEnabled = prefs.getBoolean("alarm_enabled", true);
+
+        if (!isAlarmEnabled) {
+            Log.d(TAG, "Alarm is disabled - canceling all alarms");
+            AlarmScheduler.cancelAllAlarms(this);
+            return;
+        }
+
+        int minutesBefore = prefs.getInt("alarm_minutes", 30);
+        boolean forCurrentSearch = prefs.getBoolean("forCurrentSearch", false);
+
+        Log.d(TAG, String.format("Settings: minutesBefore=%d, forCurrentSearch=%b",
+                minutesBefore, forCurrentSearch));
+
+        List<LessonData> lessonsToSchedule;
+        // Фильтруем уроки по текущему поиску
+        lessonsToSchedule = getFilteredLessons();
+        Log.d(TAG, "Using filtered lessons: " + lessonsToSchedule.size() + " lessons");
+
+
+        // Фильтруем уроки на сегодня
+        List<LessonData> todayLessons = getTodayLessons(lessonsToSchedule);
+        Log.d(TAG, "Today lessons: " + todayLessons.size() + " lessons");
+
+        // Находим первое занятие дня
+        LessonData firstLesson = null;
+        for (LessonData lesson : todayLessons) {
+            if (firstLesson == null || lesson.startTime.before(firstLesson.startTime)) {
+                firstLesson = lesson;
+                Log.d(TAG, "New first lesson: " + lesson.subject + " at " + lesson.time);
+            }
+        }
+
+        if (firstLesson != null) {
+            Log.d(TAG, "Scheduling alarm for first lesson: " + firstLesson.subject);
+            AlarmScheduler.scheduleAlarms(this, List.of(firstLesson), minutesBefore);
+        } else {
+            Log.d(TAG, "No first lesson found for today");
+            AlarmScheduler.cancelAllAlarms(this);
+        }
+    }
+
+    private List<LessonData> getTodayLessons(List<LessonData> lessons) {
+        List<LessonData> todayLessons = new ArrayList<>();
+        Calendar today = Calendar.getInstance();
+
+        for (LessonData lesson : lessons) {
+            Calendar lessonCal = Calendar.getInstance();
+            lessonCal.setTime(lesson.startTime);
+
+            boolean sameDay = lessonCal.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+                    lessonCal.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR);
+
+            if (sameDay) todayLessons.add(lesson);
+        }
+        return todayLessons;
+    }
+
     private void animateScheduleTransition(boolean scrollRight) {
         int outAnim = scrollRight ? R.anim.slide_left_out : R.anim.slide_right_out;
         int inAnim = scrollRight ? R.anim.slide_right_in : R.anim.slide_left_in;
@@ -500,6 +678,8 @@ public class ScheduleActivity extends AppCompatActivity {
                             clearData = true;
                         }
                     }
+                    Log.d(TAG, "Week changed - updating alarms");
+                    updateAlarms();
                 }
             }
         });
@@ -512,116 +692,251 @@ public class ScheduleActivity extends AppCompatActivity {
             permissions = permissions && ContextCompat.checkSelfPermission(this, p) == PERMISSION_GRANTED;
         }
 
-        if (!permissions)
+        if (!permissions){
             ActivityCompat.requestPermissions(this, permissionsId, callbackId);
-        syncWithGoogleCalendar();
+            syncWithGoogleCalendar();}
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CALENDAR) {
-            if (grantResults.length > 0 && grantResults[0] == PERMISSION_GRANTED) {
-                syncWithGoogleCalendar();
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+
+            if (allGranted) {
+                // Добавлена проверка через 500мс
+                new Handler().postDelayed(() -> {
+                    if (hasGoogleAccount()) {
+                        syncWithGoogleCalendar();
+                    } else {
+                        showAddAccountDialog();
+                    }
+                }, 500);
             } else {
-                Toast.makeText(this, "Требуется разрешение для работы с календарем", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Требуются все разрешения", Toast.LENGTH_SHORT).show();
             }
         }
     }
-    private void deleteExistingEvents() throws Exception {
-        ContentResolver cr = getContentResolver();
-        Uri uri = Events.CONTENT_URI;
-        String selection = Events.DESCRIPTION + " LIKE ?";
-        String[] selectionArgs = new String[]{"%Синхронизировано через MyApp%"};
 
-        int deletedRows = cr.delete(uri, selection, selectionArgs);
-        Log.i(TAG, "Удалено событий: " + deletedRows);
+    private void checkPermissions() {
+        List<String> permissions = new ArrayList<>();
+
+        // Добавляем проверку разрешения для аккаунтов
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS)
+                != PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.GET_ACCOUNTS);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR)
+                != PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.WRITE_CALENDAR);
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALENDAR)
+                != PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.READ_CALENDAR);
+        }
+
+        if (!permissions.isEmpty()) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    permissions.toArray(new String[0]),
+                    PERMISSION_REQUEST_CALENDAR
+            );
+        } else {
+            syncWithGoogleCalendar();
+        }
     }
+
+    private boolean hasGoogleAccount() {
+        try {
+            AccountManager am = AccountManager.get(this);
+            Pattern googlePattern = Pattern.compile(".*@gmail\\.com|.*@googlemail\\.com", Pattern.CASE_INSENSITIVE);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(Manifest.permission.GET_ACCOUNTS) != PERMISSION_GRANTED) {
+                    Log.w(TAG, "No GET_ACCOUNTS permission");
+                    return false;
+                }
+            }
+
+            Account[] accounts = am.getAccounts();
+            for (Account account : accounts) {
+                if (googlePattern.matcher(account.name).matches()) {
+                    Log.d(TAG, "Found Google account: " + account.name);
+                    return true;
+                }
+            }
+            Log.w(TAG, "No Google accounts found");
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking Google accounts: " + e.getMessage());
+            return false;
+        }
+    }
+
     private void syncWithGoogleCalendar() {
+        // Проверяем разрешения для работы с аккаунтами
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.GET_ACCOUNTS},
+                    PERMISSION_REQUEST_CALENDAR
+            );
+            return;
+        }
 
-
+        if (currentSearchQuery.isEmpty()) {
+            Toast.makeText(this, "Выберите группу или преподавателя", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Добавьте эту проверку
+        if (getGoogleCalendarId() == -1) {
+            runOnUiThread(() -> Toast.makeText(
+                    this,
+                    "Основной календарь Google не найден",
+                    Toast.LENGTH_SHORT
+            ).show());
+            return;
+        }
+        if (jsonDataOfSite == null || jsonDataOfSite.isEmpty()) {
+            Toast.makeText(this, "Нет данных для синхронизации", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (groupedLessonsMap.isEmpty()) {
             Toast.makeText(this, "Нет данных для синхронизации", Toast.LENGTH_SHORT).show();
             return;
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.GET_ACCOUNTS},
+                    PERMISSION_REQUEST_CALENDAR
+            );
+            return;
+        }
+
+
+        if (!hasGoogleAccount()) {
+            Log.w(TAG, "No Google account, showing dialog");
+            showAddAccountDialog();
+            return;
+        }
+
 
         new Thread(() -> {
             try {
-                // Удаляем старые события
-                deleteExistingEvents();
+                Log.d(TAG, "Starting calendar sync...");
+                deleteExistingEventsForCurrentSearch();
 
-                // Добавляем новые события
-                List<LessonData> allLessons = new ArrayList<>();
-                for (List<LessonData> lessons : groupedLessonsMap.values()) {
-                    allLessons.addAll(lessons);
-                }
+                List<LessonData> lessonsToSync = getFilteredLessons();
+                Log.d(TAG, "Lessons to sync: " + lessonsToSync.size());
 
-                for (LessonData lesson : allLessons) {
+                for (LessonData lesson : lessonsToSync) {
                     addEventToCalendar(lesson);
                 }
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        "Расписание синхронизировано с Google Календарем",
+                        Toast.LENGTH_LONG
+                ).show());
 
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Расписание синхронизировано с Google Календарем", Toast.LENGTH_LONG).show());
+                // Запускаем синхронизацию
+                AccountManager am = AccountManager.get(this);
+                Account[] accounts = am.getAccountsByType("com.google");
+                if (accounts.length > 0) {
+                    Bundle extras = new Bundle();
+                    extras.putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true);
+                    ContentResolver.requestSync(accounts[0], CalendarContract.AUTHORITY, extras);
+                }
+                else {
+                    Log.d(TAG, "ошибка calendar sync...");
+                }
+
             } catch (Exception e) {
-                runOnUiThread(() ->
-                        Toast.makeText(this, "Ошибка синхронизации: " + e.getMessage(), Toast.LENGTH_LONG).show());
-                Log.e(TAG,"Ошибка синхронизации: "+e);
+                Log.e(TAG, "Sync error: " + e.getMessage(), e);
+                runOnUiThread(() -> Toast.makeText(
+                        this,
+                        "Ошибка синхронизации: " + e.getMessage(),
+                        Toast.LENGTH_LONG
+                ).show());
             }
         }).start();
     }
 
-    private void addEventToCalendar(LessonData lesson) {
+    private void deleteExistingEventsForCurrentSearch() throws Exception {
         ContentResolver cr = getContentResolver();
-        ContentValues values = new ContentValues();
+        long calendarId = getGoogleCalendarId();
 
-        values.put(Events.DTSTART, lesson.startTime.getTime());
-        values.put(Events.DTEND, lesson.endTime.getTime());
-        values.put(Events.TITLE, lesson.subject);
-        values.put(Events.DESCRIPTION,
-                "Аудитория: " + lesson.audience + "\n" +
-                        "Преподаватель: " + lesson.teacher + "\n" +
-                        "Тип занятия: " + lesson.type + "\n" +
-                        "Синхронизировано через MyApp"); // Уникальный маркер
-        values.put(Events.CALENDAR_ID, getPrimaryCalendarId());
-        values.put(Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
+        // Получаем аккаунт пользователя
+        Account[] accounts = AccountManager.get(this).getAccountsByType("com.google");
+        if (accounts.length == 0) return;
 
-        // Правило повтора
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(lesson.startTime);
-        int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
-        values.put(Events.RRULE, "FREQ=WEEKLY;BYDAY=" + getDayAbbreviation(dayOfWeek) + ";COUNT=16");
+        String accountName = accounts[0].name;
+        String ownerAccount = accounts[0].name;
 
-        cr.insert(Events.CONTENT_URI, values);
+        String selection = Events.CALENDAR_ID + " = ? AND " +
+                Events.OWNER_ACCOUNT + " = ? AND " +
+                Events.ACCOUNT_NAME + " = ? AND " +
+                Events.DESCRIPTION + " LIKE ?";
+
+        String[] selectionArgs = new String[]{
+                String.valueOf(calendarId),
+                ownerAccount,
+                accountName,
+                "%Синхронизировано через MyApp%"
+        };
+
+        int deletedRows = cr.delete(Events.CONTENT_URI, selection, selectionArgs);
+        Log.i(TAG, "Удалено событий: " + deletedRows);
     }
 
-    private String getDayAbbreviation(int dayOfWeek) {
-        switch (dayOfWeek) {
-            case Calendar.MONDAY: return "MO";
-            case Calendar.TUESDAY: return "TU";
-            case Calendar.WEDNESDAY: return "WE";
-            case Calendar.THURSDAY: return "TH";
-            case Calendar.FRIDAY: return "FR";
-            case Calendar.SATURDAY: return "SA";
-            case Calendar.SUNDAY: return "SU";
-            default: return "MO";
-        }
-    }
+    private void addEventToCalendar(LessonData lesson) {
+        try {
 
-    private long getPrimaryCalendarId() {
-        Cursor cursor = getContentResolver().query(
-                CalendarContract.Calendars.CONTENT_URI,
-                new String[]{CalendarContract.Calendars._ID},
-                CalendarContract.Calendars.IS_PRIMARY + "=1",
-                null,
-                null
-        );
+            ContentResolver cr = getContentResolver();
+            ContentValues values = new ContentValues();
 
-        if (cursor != null && cursor.moveToFirst()) {
-            long id = cursor.getLong(0);
-            cursor.close();
-            return id;
+            // Получаем аккаунт пользователя
+            Account[] accounts = AccountManager.get(this).getAccountsByType("com.google");
+            if (accounts.length == 0) return;
+            String description = "Группа: " + lesson.group + "\n" +
+                    "Преподаватель: " + lesson.teacher + "\n" +
+                    "Аудитория: " + lesson.audience + "\n" +
+                    "Синхронизировано через MyApp";
+
+            values.put(Events.TITLE, lesson.subject);
+            values.put(Events.DESCRIPTION, description);
+            values.put(Events.EVENT_LOCATION, lesson.audience);
+            values.put(Events.DTSTART, lesson.startTime.getTime());
+            values.put(Events.DTEND, lesson.endTime.getTime());
+            SimpleDateFormat logSdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+            logSdf.setTimeZone(TimeZone.getDefault());
+            Log.d(TAG, "Adding event: " + lesson.subject +
+                    " on " + logSdf.format(lesson.startTime) +
+                    " to " + logSdf.format(lesson.endTime));
+            long calendarId = getGoogleCalendarId();
+            values.put(Events.CALENDAR_ID, calendarId);
+            values.put(Events.EVENT_TIMEZONE, "UTC");
+            values.put(Events.ORGANIZER, "MyTPU Schedule");
+            values.put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY);
+
+            Uri uri = cr.insert(Events.CONTENT_URI, values);
+            if (uri != null) {
+                Log.i(TAG, "Event added: " + uri);
+            } else {
+                Log.e(TAG, "Failed to add event");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding event: " + e.getMessage(), e);
         }
-        return 1; // fallback
     }
 
     private List<WeekWheelAdapter.WeekItem> generateWeeks() {
@@ -679,27 +994,8 @@ public class ScheduleActivity extends AppCompatActivity {
     private void restoreLastSearch() {
         String lastSearch = sharedPreferences.getString(KEY_LAST_SEARCH, "");
         if (!lastSearch.isEmpty()) {
-            currentSearchQuery = lastSearch.toLowerCase();
-            searchField.setText(lastSearch);
-            updateGroupsTextView(lastSearch);
-            // Немедленно применяем поиск при восстановлении
-            if (jsonDataOfSite != null) {
-                parseSchedule(jsonDataOfSite);
-            }
+            applySearch(lastSearch);
         }
-    }
-
-    private void setupWorkManager() {
-        PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
-                ScheduleWorker.class, 15, TimeUnit.MINUTES
-        ).build();
-
-        WorkManager.getInstance(this)
-                .enqueueUniquePeriodicWork(
-                        "scheduleCheck",
-                        ExistingPeriodicWorkPolicy.KEEP,
-                        request
-                );
     }
 
     private void toggleSearch() {
@@ -717,6 +1013,21 @@ public class ScheduleActivity extends AppCompatActivity {
         outState.putInt("SELECTED_WEEK", selectedWeek);
         outState.putInt("SELECTED_YEAR", selectedYear);
         outState.putBooleanArray("HAS_LESSONS", hasLessons);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d(TAG, "onResume - updating alarms");
+        updateAlarms();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (AlarmScheduler.isAlarmEnabled(this)) {
+            updateAlarms();
+        }
     }
 
     @Override
@@ -876,10 +1187,16 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void applySearch(String query) {
-        currentSearchQuery = query.trim().toLowerCase();
+        if (query.matches("\\d+[а-яА-Я]\\d+")) {
+            query = query.toUpperCase().charAt(0) + query.substring(1).toLowerCase();
+        }
+        currentSearchQuery = query.trim();
+        saveSearchState(query);
         saveSearchState(query);
         updateGroupsTextView(query);
-
+        SharedPreferences.Editor editor = getSharedPreferences("schedule_prefs", MODE_PRIVATE).edit();
+        editor.putString("saved_group", query);
+        editor.apply();
         runOnUiThread(() -> {
             clearScheduleContainers();
             paraContainers.clear();
@@ -1018,7 +1335,6 @@ public class ScheduleActivity extends AppCompatActivity {
 
     }
 
-
     private void setupSearchField() {
         //loadSchedule();
         EditText searchField = findViewById(R.id.searchField);
@@ -1038,6 +1354,9 @@ public class ScheduleActivity extends AppCompatActivity {
 
     private void loadInitialWeek() {
         Calendar calendar = Calendar.getInstance();
+        calendar.setFirstDayOfWeek(Calendar.MONDAY);
+        calendar.setMinimalDaysInFirstWeek(4);
+
         selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
         selectedYear = calendar.get(Calendar.YEAR);
         updateDates();
@@ -1047,7 +1366,14 @@ public class ScheduleActivity extends AppCompatActivity {
         if (jsonDataOfSite != null || isFinishing()) return;
 
         showLoading(true);
-
+        EditText searchField = findViewById(R.id.searchField);
+        searchField.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch();
+                return true;
+            }
+            return false;
+        });
         executor.execute(() -> {
             int retryCount = 0;
             final int MAX_RETRIES = 3;
@@ -1193,9 +1519,10 @@ public class ScheduleActivity extends AppCompatActivity {
                 }
 
                 runOnUiThread(() -> {
-                    updateAlarms(); // Добавьте эту строку
                     updateDayDates();
                     redrawScheduleUI();
+                    Log.d(TAG, "Schedule parsed - updating alarms");
+                    updateAlarms();
                 });
 
             } catch (JSONException e) {
@@ -1204,6 +1531,7 @@ public class ScheduleActivity extends AppCompatActivity {
             }
         });
     }
+
     private void redrawScheduleUI() {
         runOnUiThread(() -> {
             clearScheduleContainers();
@@ -1233,17 +1561,7 @@ public class ScheduleActivity extends AppCompatActivity {
             updateDayVisibility();
         });
     }
-    // ScheduleActivity.java
-    @SuppressLint("ScheduleExactAlarm")
-    private void updateAlarms() {
-        List<LessonData> allLessons = new ArrayList<>();
-        for (List<LessonData> lessons : groupedLessonsMap.values()) {
-            allLessons.addAll(lessons);
-        }
 
-        boolean[] selectedParas = AlarmScheduler.getSavedSettings(this);
-        AlarmScheduler.scheduleAlarms(this, allLessons, selectedParas);
-    }
     private void addGroupedLessonsToUI(List<LessonData> lessons) {
         if (lessons == null || lessons.isEmpty()) return;
 
@@ -1273,7 +1591,7 @@ public class ScheduleActivity extends AppCompatActivity {
                 }
 
                 container.addView(paraCard);
-                hasLessons[dayIndex] = true;
+                hasLessons[firstLesson.weekday - 1] = true;
 
             } catch (Exception e) {
                 Log.e(TAG, "Error adding lessons: " + e.getMessage());
@@ -1281,9 +1599,42 @@ public class ScheduleActivity extends AppCompatActivity {
         });
     }
 
+    private List<LessonData> getFilteredLessons() {
+        List<LessonData> filtered = new ArrayList<>();
+        Log.d(TAG, "Filtering lessons for: " + currentSearchQuery);
+
+        for (List<LessonData> lessons : groupedLessonsMap.values()) {
+            for (LessonData lesson : lessons) {
+                Log.d(TAG, "Checking lesson: " + lesson.subject +
+                        " | Group: " + lesson.group +
+                        " | Teacher: " + lesson.teacher);
+
+                if (matchesCurrentSearch(lesson)) {
+                    filtered.add(lesson);
+                    Log.d(TAG, "Lesson ADDED: " + lesson.subject);
+                }
+            }
+        }
+        Log.d(TAG, "Total filtered lessons: " + filtered.size());
+        return filtered;
+    }
+
+    private boolean matchesCurrentSearch(LessonData lesson) {
+        if (currentSearchQuery.isEmpty()) return false; // Без запроса ничего не показываем
+
+        // Точное совпадение для группы (без учета регистра)
+        boolean groupMatch = lesson.group != null &&
+                lesson.group.equalsIgnoreCase(currentSearchQuery);
+
+        // Точное совпадение для преподавателя (без учета регистра)
+        boolean teacherMatch = lesson.teacher != null &&
+                lesson.teacher.equalsIgnoreCase(currentSearchQuery);
+
+        return groupMatch || teacherMatch;
+    }
+
     private void updateDayDates() {
         if (dayHeaders.isEmpty() || dayHeaders.size() < DAYS_IN_WEEK) return;
-
 
         SimpleDateFormat sdf = new SimpleDateFormat("d MMMM", new Locale("ru"));
         Calendar cal = Calendar.getInstance();
@@ -1292,9 +1643,9 @@ public class ScheduleActivity extends AppCompatActivity {
         cal.set(Calendar.YEAR, selectedYear);
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
 
-        for (TextView header : dayHeaders) {
-            if (header != null) {
-                header.setText(sdf.format(cal.getTime()));
+        for (int i = 0; i < DAYS_IN_WEEK; i++) {
+            if (dayHeaders.get(i) != null) {
+                dayHeaders.get(i).setText(sdf.format(cal.getTime()));
                 cal.add(Calendar.DAY_OF_MONTH, 1);
             }
         }
@@ -1320,7 +1671,7 @@ public class ScheduleActivity extends AppCompatActivity {
             JSONObject lesson = lessons.getJSONObject(k);
 
             if (groupMatch || checkTeacherInLesson(lesson)) {
-                LessonData lessonData = processLesson(lesson);
+                LessonData lessonData = processLesson(lesson, groupName);
                 if (lessonData != null) {
                     String key = lessonData.weekday + "|" + lessonData.time;
                     synchronized (lock) {
@@ -1348,63 +1699,107 @@ public class ScheduleActivity extends AppCompatActivity {
                     .toLowerCase()
                     .trim();
 
-            if (teacherName.contains(query)) {
+            if (teacherName.equals(query)) { // Только точное совпадение
                 return true;
             }
         }
         return false;
     }
 
-    private LessonData processLesson(JSONObject lesson) throws JSONException {
+    private LessonData processLesson(JSONObject lesson, String groupName) throws JSONException {
         try {
             JSONObject date = lesson.getJSONObject("date");
-            String startDateStr = date.getString("start");
             int weekday = date.getInt("weekday");
+            // В начале processLesson()
+            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC")); // Явное указание UTC
 
-            // Парсинг даты
-            SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy");
+            Calendar lessonCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+            lessonCal.setFirstDayOfWeek(Calendar.MONDAY);
+            String startDateStr = date.getString("start");
+
+
             Date lessonDate = sdf.parse(startDateStr);
+            Calendar baseCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+            baseCal.setFirstDayOfWeek(Calendar.MONDAY);
+            baseCal.setMinimalDaysInFirstWeek(4);
+            baseCal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
+            baseCal.set(Calendar.YEAR, selectedYear);
+            baseCal.set(Calendar.DAY_OF_WEEK, getCalendarDayOfWeek(weekday));
 
-            // Проверка совпадения недели
-            Calendar lessonCal = Calendar.getInstance();
-            lessonCal.setTime(lessonDate);
+            // Сбрасываем время
+            baseCal.set(Calendar.HOUR_OF_DAY, 0);
+            baseCal.set(Calendar.MINUTE, 0);
+            baseCal.set(Calendar.SECOND, 0);
+            baseCal.set(Calendar.MILLISECOND, 0);
 
-            Calendar selectedCal = Calendar.getInstance();
-            selectedCal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
-            selectedCal.set(Calendar.YEAR, selectedYear);
+            Calendar calISO = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+            calISO.setMinimalDaysInFirstWeek(4);
+            calISO.setFirstDayOfWeek(Calendar.MONDAY);
+            calISO.setTime(lessonDate);
+            int lessonWeek = calISO.get(Calendar.WEEK_OF_YEAR);
+            int lessonYear = lessonCal.get(Calendar.YEAR);
 
-            if (lessonCal.get(Calendar.WEEK_OF_YEAR) != selectedCal.get(Calendar.WEEK_OF_YEAR) ||
-                    lessonCal.get(Calendar.YEAR) != selectedCal.get(Calendar.YEAR)) {
+            // Проверка недели и года
+            if (lessonWeek != selectedWeek || lessonYear != selectedYear) {
                 return null;
             }
 
-            // Время занятия
             JSONObject time = lesson.getJSONObject("time");
             String startTime = time.getString("start");
             String endTime = time.getString("end");
-            String lessonTime = startTime + " - " + endTime;
-            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm");
-            Date startTimeD = timeFormat.parse(time.getString("start"));
-            Date endTimeD = timeFormat.parse(time.getString("end"));
 
-            int paraNumber = determineParaNumber(lessonTime);
+            // Устанавливаем время начала
+            Calendar startCal = (Calendar) baseCal.clone();
+            String[] startParts = startTime.split(":");
+            startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startParts[0]));
+            startCal.set(Calendar.MINUTE, Integer.parseInt(startParts[1]));
+
+            // Устанавливаем время окончания
+            Calendar endCal = (Calendar) baseCal.clone();
+            String[] endParts = endTime.split(":");
+            endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endParts[0]));
+            endCal.set(Calendar.MINUTE, Integer.parseInt(endParts[1]));
+
+            // Проверка корректности временного интервала
+            if (startCal.after(endCal)) {
+                Log.w(TAG, "Invalid time range for lesson: " + lesson);
+                return null;
+            }
+
+            int paraNumber = determineParaNumber(startTime + " - " + endTime);
 
             return new LessonData(
-                    startTimeD,
-                    endTimeD,
+                    startCal.getTime(),
+                    endCal.getTime(),
                     lesson.getString("subject"),
                     lesson.getString("type"),
                     lesson.optInt("subgroups", 0),
-                    lessonTime,
+                    startTime + " - " + endTime,
                     getAudience(lesson.getJSONArray("audiences")),
                     getTeacher(lesson.getJSONArray("teachers")),
                     weekday,
-                    paraNumber // Передаем номер пары
+                    paraNumber,
+                    groupName
             );
 
         } catch (ParseException | JSONException e) {
             Log.w(TAG, "Skipping invalid lesson: " + e.getMessage());
             return null;
+        }
+    }
+
+    // Вспомогательный метод для преобразования дня недели в формат Calendar
+    private int getCalendarDayOfWeek(int ourWeekday) {
+        switch (ourWeekday) {
+            case 1: return Calendar.MONDAY;
+            case 2: return Calendar.TUESDAY;
+            case 3: return Calendar.WEDNESDAY;
+            case 4: return Calendar.THURSDAY;
+            case 5: return Calendar.FRIDAY;
+            case 6: return Calendar.SATURDAY;
+            case 7: return Calendar.SUNDAY;
+            default: return Calendar.MONDAY;
         }
     }
 
@@ -1620,35 +2015,17 @@ public class ScheduleActivity extends AppCompatActivity {
 
     private int determineParaNumber(String time) {
         try {
-            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
-            String startTimeStr = time.split(" - ")[0];
-            Date startTime = sdf.parse(startTimeStr);
+            String start = time.split(" - ")[0];
+            int hour = Integer.parseInt(start.split(":")[0]);
 
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(startTime);
-
-            int hour = cal.get(Calendar.HOUR_OF_DAY);
-            int minute = cal.get(Calendar.MINUTE);
-
-            // Расписание пар по времени
-            if (hour == 8 && minute >= 30) return 1;
-            if (hour == 10 && minute <= 5) return 1;
-
-            if (hour == 10 && minute >= 20) return 2;
-            if (hour == 11 && minute <= 35) return 2;
-
-            if (hour == 12 && minute >= 45) return 3;
-            if (hour == 14 && minute <= 20) return 3;
-
-            if (hour == 14 && minute >= 35) return 4;
-            if (hour == 16 && minute <= 10) return 4;
-
-            if (hour == 16 && minute >= 20) return 5;
-            if (hour == 17 && minute <= 55) return 5;
-            return 6;
-
-        } catch (ParseException e) {
-            return 0; // Некорректное время
+            if (hour == 8) return 1;
+            if (hour == 10) return 2;
+            if (hour == 12) return 3;
+            if (hour == 14) return 4;
+            if (hour == 16) return 5;
+            return 6; // Для вечерних пар
+        } catch (Exception e) {
+            return 0;
         }
     }
 
@@ -1688,21 +2065,37 @@ public class ScheduleActivity extends AppCompatActivity {
         editor.apply();
     }
 
-    static class LessonData {
-        Date startTime;
-        Date endTime;
-        String subject;
-        String type;
-        int subgroups;
-        String time;
-        String audience;
-        String teacher;
-        int weekday;
-        int paraNumber; // Добавленное поле
+    private long getGoogleCalendarId() {
+        Uri uri = CalendarContract.Calendars.CONTENT_URI;
+        String[] projection = {CalendarContract.Calendars._ID};
+        String selection = CalendarContract.Calendars.IS_PRIMARY + "=1";
 
-        LessonData(Date startTime, Date endTime, String subject, String type,
-                   int subgroups, String time, String audience, String teacher,
-                   int weekday, int paraNumber) {
+        try (Cursor cursor = getContentResolver().query(uri, projection, selection, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getLong(0);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting primary calendar ID", e);
+        }
+        return -1;
+    }
+
+    public static class LessonData {
+        public Date startTime;
+        Date endTime;
+        public String subject;
+        public String type;
+        public int subgroups;
+        public String time;
+        public String audience;
+        public String teacher;
+        public int weekday;
+        int paraNumber;
+        public String group; // Новое поле
+
+        public LessonData(Date startTime, Date endTime, String subject, String type,
+                          int subgroups, String time, String audience, String teacher,
+                          int weekday, int paraNumber, String group) {
             this.startTime = startTime;
             this.endTime = endTime;
             this.subject = subject;
@@ -1713,6 +2106,19 @@ public class ScheduleActivity extends AppCompatActivity {
             this.teacher = teacher;
             this.weekday = weekday;
             this.paraNumber = paraNumber;
+            this.group = group;
+        }
+
+
+        @Override
+        public String toString() {
+            return "LessonData{" +
+                    "subject='" + subject + '\'' +
+                    ", time='" + time + '\'' +
+                    ", weekday=" + weekday +
+                    ", startTime=" + startTime +
+                    ", endTime=" + endTime +
+                    '}';
         }
     }
 }

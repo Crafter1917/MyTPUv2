@@ -1,5 +1,7 @@
 package com.example.mytpu;
 
+import static android.content.ContentValues.TAG;
+
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
@@ -30,6 +32,7 @@ import com.example.mytpu.mailTPU.MailActivity;
 import com.example.mytpu.moodle.DashboardActivity;
 import com.example.mytpu.portalTPU.PortalAuthHelper;
 import com.example.mytpu.schedule.ScheduleActivity;
+import com.example.mytpu.schedule.TodayScheduleFragment;
 import com.google.android.material.navigation.NavigationView;
 
 public class MainActivity extends AppCompatActivity
@@ -47,11 +50,27 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
         portalAuthHelper = new PortalAuthHelper(this);
+        fragmentContainer = findViewById(R.id.content_frame);
 
         initSharedPreferences();
         setupToolbar();
         setupNavigation();
         checkAuthState();
+    }
+    private void showTodaySchedule() {
+        unlockDrawer();
+        updateNavHeaderUsername();
+        getSupportFragmentManager().beginTransaction()
+                .replace(R.id.content_frame, new TodayScheduleFragment())
+                .commit();
+
+    }
+    private void updateMainContent() {
+        unlockDrawer();
+        updateNavigationMenu();
+        updateNavHeaderUsername();
+        fragmentContainer.setVisibility(View.VISIBLE);
+        showTodaySchedule(); // Добавлен вызов расписания
     }
 
     private void initSharedPreferences() {
@@ -95,13 +114,15 @@ public class MainActivity extends AppCompatActivity
     private void checkAuthState() {
         fragmentContainer = findViewById(R.id.content_frame);
 
+        Log.d(TAG, "checkAuthState!");
         if (isLoggedIn()) {
-            showMainContent();
-            fragmentContainer.setVisibility(View.GONE); // Скрыть контейнер фрагментов
+            updateMainContent(); // Используем обновленный метод
+            Log.d(TAG, "isLoggedIn!");
         } else {
-            fragmentContainer.setVisibility(View.VISIBLE); // Показать контейнер
+            fragmentContainer.setVisibility(View.VISIBLE);
             showLoginFragment();
             lockDrawer();
+            Log.d(TAG, "isNotLoggedIn!");
         }
     }
 

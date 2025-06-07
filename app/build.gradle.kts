@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.google.gms.google.services)
 }
 
 android {
@@ -34,7 +35,8 @@ android {
 
 dependencies {
     // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
-    implementation ("androidx.preference:preference:1.2.0")
+    implementation ("com.google.android.gms:play-services-auth:20.7.0")
+    implementation ("androidx.preference:preference:1.2.1")
     implementation ("com.github.yukuku:ambilwarna:2.0.1")
     implementation ("io.apisense:rhino-android:1.0")
     implementation ("org.apache.commons:commons-lang3:3.12.0")
@@ -57,7 +59,6 @@ dependencies {
     implementation ("com.github.bumptech.glide:glide:4.12.0")
     // Gson
     implementation ("com.google.code.gson:gson:2.10.1")
-
     // LiveData
     implementation ("androidx.lifecycle:lifecycle-livedata:2.5.1")
 
@@ -71,6 +72,10 @@ dependencies {
     implementation(libs.cronet.embedded)
     implementation(libs.swiperefreshlayout)
     implementation(libs.browser)
+    implementation(libs.firebase.auth)
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services.auth)
+    implementation(libs.googleid)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
 }

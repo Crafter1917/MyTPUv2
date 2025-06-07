@@ -34,6 +34,12 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:text="Завершить"/>
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
     </LinearLayout>
 
     <!-- Навигация вопросами -->
@@ -77,9 +83,4 @@
             android:text="Вперед"/>
     </LinearLayout>
 
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"/>
 </LinearLayout>

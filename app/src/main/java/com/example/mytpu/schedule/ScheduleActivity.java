@@ -3,8 +3,11 @@ package com.example.mytpu.schedule;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 import android.accounts.Account;
+import android.app.AlarmManager;
 import android.app.AlertDialog;
+import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Typeface;
@@ -53,9 +56,8 @@ import androidx.cardview.widget.CardView;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
+import androidx.viewpager2.widget.ViewPager2;
+
 import java.io.IOException;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -66,24 +68,26 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.File;
+import java.io.Serializable;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import com.example.mytpu.R;
 import com.google.android.gms.common.AccountPicker;
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
 
 public class ScheduleActivity extends AppCompatActivity {
     private static final String TAG = "ScheduleActivity";
     private static final int DAYS_IN_WEEK = 7;
     private static final int PERMISSION_REQUEST_CALENDAR = 101;
     private static final int ACCOUNT_REQUEST_CODE = 102;
-    private static final int REQUEST_CODE_ALARM_SOUND = 1001;
+    public static final int REQUEST_CODE_ALARM_SOUND = 1001;
     private LinearLayout scheduleContainer;
     private int lastSelectedWeek = -1;
     private boolean isScrollingRight = true;
@@ -128,6 +132,8 @@ public class ScheduleActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        // Исправленный код для обработки звука будильника
         if (requestCode == REQUEST_CODE_ALARM_SOUND && resultCode == RESULT_OK) {
             Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
             if (ringtoneUri != null) {
@@ -137,7 +143,7 @@ public class ScheduleActivity extends AppCompatActivity {
         }
         else if (requestCode == ACCOUNT_REQUEST_CODE) {
             Log.d(TAG, "Returned from account addition flow");
-            checkAccountWithRetry(10, 500); // 10 попыток с интервалом 500мс
+            checkAccountWithRetry(10, 500);
         }
     }
 
@@ -237,41 +243,29 @@ public class ScheduleActivity extends AppCompatActivity {
         initViews();
         initHttpClient();
         loadInitialWeek();
-
         setupSearchAutocomplete();
         updateSearchFieldBehavior();
-        // Восстановление состояния
         if (savedInstanceState != null) {
             currentSearchQuery = savedInstanceState.getString("CURRENT_SEARCH", "");
             selectedWeek = savedInstanceState.getInt("SELECTED_WEEK");
             selectedYear = savedInstanceState.getInt("SELECTED_YEAR");
             hasLessons = savedInstanceState.getBooleanArray("HAS_LESSONS");
         }
-
         View rootView = findViewById(R.id.root_layout); // Замените на ваш корневой макет
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
-            // Получаем системные отступы
             int systemWindowInsetTop = insets.getSystemWindowInsetTop();
             int systemWindowInsetBottom = insets.getSystemWindowInsetBottom();
             int systemWindowInsetLeft = insets.getSystemWindowInsetLeft();
             int systemWindowInsetRight = insets.getSystemWindowInsetRight();
-
-            // Применяем отступы к вашему макету
             v.setPadding(systemWindowInsetLeft, systemWindowInsetTop, systemWindowInsetRight, systemWindowInsetBottom);
-
-            // Возвращаем insets для дальнейшей обработки
             return insets;
         });
-
-        // Всегда загружайте JSON заново
         searchCard.post(() -> {
             originalCardWidth = searchCard.getWidth();
             setupKeyboardListener();
         });
         btnSearchToggle.setOnClickListener(v -> toggleSearch());
         setupKeyboardListener();
-        // Остальная инициализация...
-
         if (jsonDataOfSite == null || jsonDataOfSite.isEmpty()) {
             loadSchedule(); // Загружаем данные только если их нет
         } else {
@@ -322,69 +316,73 @@ public class ScheduleActivity extends AppCompatActivity {
 
     @SuppressLint("ScheduleExactAlarm")
     private void showAlarmDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_alarm, null);
-        Button btnSelectSound = view.findViewById(R.id.btnSelectSound);
+        // Создаем кастомный диалог
+        AlertDialog.Builder builder = new AlertDialog.Builder(this, R.style.RoundedDialog);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_settings, null);
+        builder.setView(view);
 
-        EditText minutesInput = view.findViewById(R.id.minutesInput);
-        CheckBox currentSearchOnly = view.findViewById(R.id.currentSearchOnly);
-        Switch switchAlarm = view.findViewById(R.id.switchAlarm);
-        Switch switchNotifications = view.findViewById(R.id.switchNotifications);
+        AlertDialog dialog = builder.create();
+        dialog.getWindow().setBackgroundDrawableResource(R.drawable.dialog_background);
+
+        // Находим все элементы
+        TabLayout tabLayout = view.findViewById(R.id.tabLayout);
+        ViewPager2 viewPager = view.findViewById(R.id.viewPager);
         Button saveButton = view.findViewById(R.id.saveButton);
 
-        SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
-        int savedMinutes = prefs.getInt("alarm_minutes", 30);
-        boolean alarmEnabled = prefs.getBoolean("alarm_enabled", true);
-        boolean notificationsEnabled = prefs.getBoolean("notifications_enabled", true);
-        boolean forCurrentSearch = prefs.getBoolean("forCurrentSearch", false);
-        btnSelectSound.setOnClickListener(v -> {
-            Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
-            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM);
-            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Выберите звук будильника");
-            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
-                    Uri.parse(prefs.getString("alarm_sound_uri", "")));
-            startActivityForResult(intent, REQUEST_CODE_ALARM_SOUND);
-        });
-        minutesInput.setText(String.valueOf(savedMinutes));
-        switchAlarm.setChecked(alarmEnabled);
-        switchNotifications.setChecked(notificationsEnabled);
-        currentSearchOnly.setChecked(forCurrentSearch);
-
-        builder.setView(view);
-        AlertDialog dialog = builder.create();
+        // Настраиваем ViewPager с вкладками
+        SettingsPagerAdapter adapter = new SettingsPagerAdapter(this);
+        viewPager.setAdapter(adapter);
+        new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
+            tab.setText(position == 0 ? "Будильник" : "Календарь");
+        }).attach();
 
         saveButton.setOnClickListener(v -> {
-            int minutesBefore;
-            try {
-                minutesBefore = Integer.parseInt(minutesInput.getText().toString());
-                if (minutesBefore < 1) minutesBefore = 1;
-                if (minutesBefore > 1440) minutesBefore = 1440;
-            } catch (NumberFormatException e) {
-                minutesBefore = 30;
-            }
-
-            boolean isAlarmEnabled = switchAlarm.isChecked();
-            boolean isNotificationsEnabled = switchNotifications.isChecked();
-            boolean isForCurrentSearch = currentSearchOnly.isChecked();
-
-            SharedPreferences.Editor editor = prefs.edit();
-            editor.putInt("alarm_minutes", minutesBefore);
-            editor.putBoolean("alarm_enabled", isAlarmEnabled);
-            editor.putBoolean("notifications_enabled", isNotificationsEnabled);
-            editor.putBoolean("forCurrentSearch", isForCurrentSearch);
-            editor.apply();
-
-            // Обновляем будильники при изменении настроек
-            if (isAlarmEnabled || isNotificationsEnabled) {
-                updateAlarms();
-            } else {
-                AlarmScheduler.cancelAllAlarms(this);
-            }
-            updateAlarms();
+            // Сохраняем настройки из обоих фрагментов
+            saveSettings(adapter);
             dialog.dismiss();
         });
 
+        // Добавить перед dialog.show()
+        WindowManager.LayoutParams params = dialog.getWindow().getAttributes();
+        params.width = WindowManager.LayoutParams.MATCH_PARENT;
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        dialog.getWindow().setAttributes(params);
+
         dialog.show();
+    }
+
+    // ScheduleActivity.java - дополнительно обновляем метод сохранения настроек
+
+    private void saveSettings(SettingsPagerAdapter adapter) {
+        SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+
+        // Настройки будильника
+        AlarmSettingsFragment alarmFragment = (AlarmSettingsFragment) adapter.getFragment(0);
+        if (alarmFragment != null) {
+            int minutesBefore = alarmFragment.getHours() * 60 + alarmFragment.getMinutes();
+            editor.putInt("alarm_minutes", minutesBefore);
+            editor.putBoolean("alarm_enabled", alarmFragment.isAlarmEnabled());
+            editor.putBoolean("notifications_enabled", alarmFragment.isNotificationsEnabled());
+        }
+
+        // Настройки календаря
+        CalendarSettingsFragment calendarFragment = (CalendarSettingsFragment) adapter.getFragment(1);
+        if (calendarFragment != null) {
+            int reminderMinutes = calendarFragment.getHours() * 60 + calendarFragment.getMinutes();
+            editor.putInt("calendar_reminder_minutes", reminderMinutes);
+            editor.putBoolean("weekly_sync", calendarFragment.isWeeklySyncEnabled());
+
+            // Безопасная проверка
+            if (calendarFragment.isAddBreaksEnabled()) {
+                editor.putBoolean("add_breaks", true);
+            } else {
+                editor.putBoolean("add_breaks", false);
+            }
+        }
+
+        editor.apply();
+        updateAlarms();
     }
 
     @SuppressLint("ScheduleExactAlarm")
@@ -393,10 +391,15 @@ public class ScheduleActivity extends AppCompatActivity {
 
         SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
         boolean isAlarmEnabled = prefs.getBoolean("alarm_enabled", true);
-
+        List<LessonData> lessonsToSchedule = getFilteredLessons();
         if (!isAlarmEnabled) {
             Log.d(TAG, "Alarm is disabled - canceling all alarms");
             AlarmScheduler.cancelAllAlarms(this);
+            if (AlarmScheduler.isAlarmEnabled(this)) {
+
+                int minutesBefore = prefs.getInt("alarm_minutes", 30);
+                AlarmScheduler.scheduleAlarms(this, lessonsToSchedule, minutesBefore);
+            }
             return;
         }
 
@@ -405,10 +408,6 @@ public class ScheduleActivity extends AppCompatActivity {
 
         Log.d(TAG, String.format("Settings: minutesBefore=%d, forCurrentSearch=%b",
                 minutesBefore, forCurrentSearch));
-
-        List<LessonData> lessonsToSchedule;
-        // Фильтруем уроки по текущему поиску
-        lessonsToSchedule = getFilteredLessons();
         Log.d(TAG, "Using filtered lessons: " + lessonsToSchedule.size() + " lessons");
 
 
@@ -431,6 +430,9 @@ public class ScheduleActivity extends AppCompatActivity {
         } else {
             Log.d(TAG, "No first lesson found for today");
             AlarmScheduler.cancelAllAlarms(this);
+            if (AlarmScheduler.isAlarmEnabled(this)) {
+                AlarmScheduler.scheduleAlarms(this, lessonsToSchedule, minutesBefore);
+            }
         }
     }
 
@@ -780,7 +782,7 @@ public class ScheduleActivity extends AppCompatActivity {
         }
     }
 
-    private void syncWithGoogleCalendar() {
+    public void syncWithGoogleCalendar() {
         // Проверяем разрешения для работы с аккаунтами
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -840,7 +842,8 @@ public class ScheduleActivity extends AppCompatActivity {
                 Log.d(TAG, "Lessons to sync: " + lessonsToSync.size());
 
                 for (LessonData lesson : lessonsToSync) {
-                    addEventToCalendar(lesson);
+                        addEventToCalendar(lesson);
+                        addBreakEventToCalendar(lesson);
                 }
                 runOnUiThread(() -> Toast.makeText(
                         this,
@@ -853,6 +856,7 @@ public class ScheduleActivity extends AppCompatActivity {
                 Account[] accounts = am.getAccountsByType("com.google");
                 if (accounts.length > 0) {
                     Bundle extras = new Bundle();
+                    extras.putBoolean(ContentResolver.SYNC_EXTRAS_EXPEDITED, true);
                     extras.putBoolean(ContentResolver.SYNC_EXTRAS_MANUAL, true);
                     ContentResolver.requestSync(accounts[0], CalendarContract.AUTHORITY, extras);
                 }
@@ -861,37 +865,96 @@ public class ScheduleActivity extends AppCompatActivity {
                 }
 
             } catch (Exception e) {
-                Log.e(TAG, "Sync error: " + e.getMessage(), e);
+                Log.e(TAG, "Sync error", e);
                 runOnUiThread(() -> Toast.makeText(
                         this,
-                        "Ошибка синхронизации: " + e.getMessage(),
+                        "Ошибка: " + e.getMessage(),
                         Toast.LENGTH_LONG
                 ).show());
             }
         }).start();
     }
 
+    private void addBreakEventToCalendar(LessonData lesson) {
+        try {
+            // Получаем настройки - нужно ли добавлять перерывы
+            SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+            boolean addBreaks = prefs.getBoolean("add_breaks", true);
+
+            if (!addBreaks) return; // если пользователь отключил перерывы
+
+            // Перерыв начинается через 1 минуту после окончания пары и длится 5 минут
+            Calendar breakStart = Calendar.getInstance();
+            breakStart.setTime(lesson.startTime);
+            breakStart.add(Calendar.MINUTE, 45); // Было 1
+
+            // Конец перерыва через 5 мин после начала перерыва
+            Calendar breakEnd = (Calendar) breakStart.clone();
+            breakEnd.add(Calendar.MINUTE, 5);
+
+            ContentResolver cr = getContentResolver();
+            ContentValues values = new ContentValues();
+
+            Account[] accounts = AccountManager.get(this).getAccountsByType("com.google");
+            if (accounts.length == 0) return;
+
+            String description = "Перерыв после пары: " + lesson.subject + "\n" +
+                    "Синхронизировано через MyApp";
+
+            long calendarId = getGoogleCalendarId();
+            values.put(Events.CALENDAR_ID, calendarId);
+            values.put(Events.TITLE, "Перемена");
+            values.put(Events.DESCRIPTION, description);
+            values.put(Events.EVENT_LOCATION, "");
+            values.put(Events.DTSTART, breakStart.getTimeInMillis());
+            values.put(Events.DTEND, breakEnd.getTimeInMillis());
+            values.put(Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
+            values.put(Events.AVAILABILITY, Events.AVAILABILITY_FREE); // Свободное время
+
+            Uri uri = cr.insert(Events.CONTENT_URI, values);
+            if (uri == null) {
+                Log.e(TAG, "Failed to insert break event");
+                return;
+            }
+
+            // Устанавливаем напоминание за 0 минут
+            ContentValues reminderValues = new ContentValues();
+            reminderValues.put(CalendarContract.Reminders.MINUTES, 0); // Было 30
+            reminderValues.put(CalendarContract.Reminders.EVENT_ID, ContentUris.parseId(uri));
+            reminderValues.put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT);
+
+            getContentResolver().insert(CalendarContract.Reminders.CONTENT_URI, reminderValues);
+
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding break event: " + e.getMessage(), e);
+        }
+    }
+
+
     private void deleteExistingEventsForCurrentSearch() throws Exception {
         ContentResolver cr = getContentResolver();
         long calendarId = getGoogleCalendarId();
 
-        // Получаем аккаунт пользователя
         Account[] accounts = AccountManager.get(this).getAccountsByType("com.google");
         if (accounts.length == 0) return;
 
         String accountName = accounts[0].name;
         String ownerAccount = accounts[0].name;
 
+        // Удаляем ВСЕ события приложения (занятия и перерывы)
         String selection = Events.CALENDAR_ID + " = ? AND " +
                 Events.OWNER_ACCOUNT + " = ? AND " +
                 Events.ACCOUNT_NAME + " = ? AND " +
-                Events.DESCRIPTION + " LIKE ?";
+                "(" + Events.DESCRIPTION + " LIKE ? OR " +
+                Events.TITLE + " = ?)"; // Добавляем удаление событий "Перемена"
 
         String[] selectionArgs = new String[]{
                 String.valueOf(calendarId),
                 ownerAccount,
                 accountName,
-                "%Синхронизировано через MyApp%"
+                "%Синхронизировано через MyApp%",
+                "Перемена" // Удаляем события перерывов
         };
 
         int deletedRows = cr.delete(Events.CONTENT_URI, selection, selectionArgs);
@@ -911,12 +974,8 @@ public class ScheduleActivity extends AppCompatActivity {
                     "Преподаватель: " + lesson.teacher + "\n" +
                     "Аудитория: " + lesson.audience + "\n" +
                     "Синхронизировано через MyApp";
+            String timeZone = TimeZone.getDefault().getID();
 
-            values.put(Events.TITLE, lesson.subject);
-            values.put(Events.DESCRIPTION, description);
-            values.put(Events.EVENT_LOCATION, lesson.audience);
-            values.put(Events.DTSTART, lesson.startTime.getTime());
-            values.put(Events.DTEND, lesson.endTime.getTime());
             SimpleDateFormat logSdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
             logSdf.setTimeZone(TimeZone.getDefault());
             Log.d(TAG, "Adding event: " + lesson.subject +
@@ -924,7 +983,15 @@ public class ScheduleActivity extends AppCompatActivity {
                     " to " + logSdf.format(lesson.endTime));
             long calendarId = getGoogleCalendarId();
             values.put(Events.CALENDAR_ID, calendarId);
-            values.put(Events.EVENT_TIMEZONE, "UTC");
+                        // Устанавливаем время БЕЗ КОРРЕКЦИИ на часовой пояс
+            long startMillis = lesson.startTime.getTime();
+            long endMillis = lesson.endTime.getTime();
+            values.put(Events.TITLE, lesson.subject);
+            values.put(Events.DESCRIPTION, description);
+            values.put(Events.EVENT_LOCATION, lesson.audience);
+            values.put(Events.DTSTART, startMillis);
+            values.put(Events.DTEND, endMillis);
+            values.put(Events.EVENT_TIMEZONE, timeZone); // Используем ID зоны
             values.put(Events.ORGANIZER, "MyTPU Schedule");
             values.put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY);
 
@@ -934,8 +1001,18 @@ public class ScheduleActivity extends AppCompatActivity {
             } else {
                 Log.e(TAG, "Failed to add event");
             }
+            SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+            int reminderMinutes = prefs.getInt("calendar_reminder_minutes", 30);
+
+            ContentValues reminderValues = new ContentValues();
+            reminderValues.put(CalendarContract.Reminders.MINUTES, reminderMinutes);
+            reminderValues.put(CalendarContract.Reminders.EVENT_ID, ContentUris.parseId(uri));
+            reminderValues.put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT);
+
+            getContentResolver().insert(CalendarContract.Reminders.CONTENT_URI, reminderValues);
+
         } catch (Exception e) {
-            Log.e(TAG, "Error adding event: " + e.getMessage(), e);
+            Log.e(TAG, "Error adding reminder: " + e.getMessage(), e);
         }
     }
 
@@ -952,6 +1029,28 @@ public class ScheduleActivity extends AppCompatActivity {
             weeks.add(new WeekWheelAdapter.WeekItem(weekNumber, year));
         }
         return weeks;
+    }
+
+    private boolean eventExists(LessonData lesson) {
+        String selection = Events.TITLE + " = ? AND " +
+                Events.DTSTART + " = ? AND " +
+                Events.DTEND + " = ?";
+
+        String[] selectionArgs = {
+                lesson.subject,
+                String.valueOf(lesson.startTime.getTime()),
+                String.valueOf(lesson.endTime.getTime())
+        };
+
+        try (Cursor cursor = getContentResolver().query(
+                Events.CONTENT_URI,
+                null,
+                selection,
+                selectionArgs,
+                null
+        )) {
+            return cursor != null && cursor.getCount() > 0;
+        }
     }
 
     private void setupCurrentDateButton() {
@@ -1357,9 +1456,13 @@ public class ScheduleActivity extends AppCompatActivity {
         calendar.setFirstDayOfWeek(Calendar.MONDAY);
         calendar.setMinimalDaysInFirstWeek(4);
 
+        // Используем правильный расчет недели
         selectedWeek = calendar.get(Calendar.WEEK_OF_YEAR);
         selectedYear = calendar.get(Calendar.YEAR);
+
+        // Обновляем интерфейс
         updateDates();
+        updateDayDates();
     }
 
     private void loadSchedule() {
@@ -1467,9 +1570,6 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void updateDayVisibility() {
-        int activeColor = ContextCompat.getColor(this, R.color.active_day_background);
-        int normalColor = ContextCompat.getColor(this, R.color.card_background);
-
         Calendar calendar = Calendar.getInstance();
         int currentDay = (calendar.get(Calendar.DAY_OF_WEEK) - 2);
         if (currentDay < 0) currentDay = 6;
@@ -1605,9 +1705,6 @@ public class ScheduleActivity extends AppCompatActivity {
 
         for (List<LessonData> lessons : groupedLessonsMap.values()) {
             for (LessonData lesson : lessons) {
-                Log.d(TAG, "Checking lesson: " + lesson.subject +
-                        " | Group: " + lesson.group +
-                        " | Teacher: " + lesson.teacher);
 
                 if (matchesCurrentSearch(lesson)) {
                     filtered.add(lesson);
@@ -1710,17 +1807,16 @@ public class ScheduleActivity extends AppCompatActivity {
         try {
             JSONObject date = lesson.getJSONObject("date");
             int weekday = date.getInt("weekday");
-            // В начале processLesson()
+
+            // Используем локальный часовой пояс устройства
             SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC")); // Явное указание UTC
+            sdf.setTimeZone(TimeZone.getDefault());
 
-            Calendar lessonCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            lessonCal.setFirstDayOfWeek(Calendar.MONDAY);
             String startDateStr = date.getString("start");
-
-
             Date lessonDate = sdf.parse(startDateStr);
-            Calendar baseCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+
+            // Используем локальный календарь
+            Calendar baseCal = Calendar.getInstance(TimeZone.getDefault());
             baseCal.setFirstDayOfWeek(Calendar.MONDAY);
             baseCal.setMinimalDaysInFirstWeek(4);
             baseCal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
@@ -1733,12 +1829,14 @@ public class ScheduleActivity extends AppCompatActivity {
             baseCal.set(Calendar.SECOND, 0);
             baseCal.set(Calendar.MILLISECOND, 0);
 
-            Calendar calISO = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-            calISO.setMinimalDaysInFirstWeek(4);
-            calISO.setFirstDayOfWeek(Calendar.MONDAY);
-            calISO.setTime(lessonDate);
-            int lessonWeek = calISO.get(Calendar.WEEK_OF_YEAR);
-            int lessonYear = lessonCal.get(Calendar.YEAR);
+            // Используем локальный календарь для проверки недели
+            Calendar calLocal = Calendar.getInstance(TimeZone.getDefault());
+            calLocal.setMinimalDaysInFirstWeek(4);
+            calLocal.setFirstDayOfWeek(Calendar.MONDAY);
+            calLocal.setTime(lessonDate);
+
+            int lessonWeek = calLocal.get(Calendar.WEEK_OF_YEAR);
+            int lessonYear = calLocal.get(Calendar.YEAR);
 
             // Проверка недели и года
             if (lessonWeek != selectedWeek || lessonYear != selectedYear) {
@@ -1749,13 +1847,13 @@ public class ScheduleActivity extends AppCompatActivity {
             String startTime = time.getString("start");
             String endTime = time.getString("end");
 
-            // Устанавливаем время начала
+            // Устанавливаем время начала (локальное)
             Calendar startCal = (Calendar) baseCal.clone();
             String[] startParts = startTime.split(":");
             startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startParts[0]));
             startCal.set(Calendar.MINUTE, Integer.parseInt(startParts[1]));
 
-            // Устанавливаем время окончания
+            // Устанавливаем время окончания (локальное)
             Calendar endCal = (Calendar) baseCal.clone();
             String[] endParts = endTime.split(":");
             endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endParts[0]));
@@ -2001,15 +2099,9 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void updateDates() {
-        if ( yearTextView != null) {
+        if (yearTextView != null) {
             yearTextView.setText(String.valueOf(selectedYear));
         }
-
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.YEAR, selectedYear);
-        cal.set(Calendar.WEEK_OF_YEAR, selectedWeek);
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
-
         updateDayDates();
     }
 
@@ -2071,16 +2163,19 @@ public class ScheduleActivity extends AppCompatActivity {
         String selection = CalendarContract.Calendars.IS_PRIMARY + "=1";
 
         try (Cursor cursor = getContentResolver().query(uri, projection, selection, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                return cursor.getLong(0);
+            if (cursor == null || !cursor.moveToFirst()) {
+                Log.e(TAG, "No primary calendar found");
+                return -1;
             }
+
+            return cursor.getLong(0);
         } catch (Exception e) {
             Log.e(TAG, "Error getting primary calendar ID", e);
         }
         return -1;
     }
 
-    public static class LessonData {
+    public static class LessonData implements Serializable {
         public Date startTime;
         Date endTime;
         public String subject;

@@ -2,18 +2,14 @@ package com.example.mytpu;
 
 import static android.content.ContentValues.TAG;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -24,7 +20,6 @@ import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
@@ -32,7 +27,6 @@ import com.example.mytpu.mailTPU.MailActivity;
 import com.example.mytpu.moodle.DashboardActivity;
 import com.example.mytpu.portalTPU.PortalAuthHelper;
 import com.example.mytpu.schedule.ScheduleActivity;
-import com.example.mytpu.schedule.TodayScheduleFragment;
 import com.google.android.material.navigation.NavigationView;
 
 public class MainActivity extends AppCompatActivity
@@ -187,8 +181,8 @@ public class MainActivity extends AppCompatActivity
             startActivity(new Intent(this, ScheduleActivity.class));
         } else if (id == R.id.nav_mail) {
             startActivity(new Intent(this, MailActivity.class));
-        } else if (id == R.id.nav_portal) {
-        portalAuthHelper.authenticateAndOpenPortal();
+        //} else if (id == R.id.nav_portal) {
+        //portalAuthHelper.authenticateAndOpenPortal();
         } else if (id == R.id.nav_settings) {
         startActivity(new Intent(this, SettingsActivity.class));
         }

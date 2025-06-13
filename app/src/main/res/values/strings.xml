@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MyTPU</string>
+    <string name="app_name">Мой ТПУ</string>
     <string name="schedule_updated">Обновление расписания</string>
     <string name="new_schedule_available">Доступно новое расписание</string>
     <string name="schedule_updates_channel">Обновления расписания</string>
@@ -14,8 +14,8 @@
         <item>Воскресенье</item>
 
     </string-array>
-    <string name="navigation_drawer_open">Ща открыто</string>
-    <string name="navigation_drawer_close">Ща закрыто</string>
+    <string name="navigation_drawer_open">Открыть боковое меню?</string>
+    <string name="navigation_drawer_close">Ща закрою</string>
     <string name="allow_remote_resources">Разрешить внешние ресурсы</string>
     <string name="enter_message">Введите сообщение</string>
     <string name="message_sent">Сообщение отправлено</string>

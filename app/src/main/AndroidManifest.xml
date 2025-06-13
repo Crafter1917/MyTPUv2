@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -35,7 +36,21 @@
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true"
         tools:targetApi="31">
-
+        <profileable android:shell="true" />
+        <receiver android:name=".schedule.BreakNotificationReceiver" />
+        <receiver
+            android:name=".mailTPU.MailReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge"
+            tools:ignore="ForegroundServicePermission" />
         <activity
             android:name=".schedule.FullscreenAlarmActivity"
             android:excludeFromRecents="true"
@@ -61,7 +76,9 @@
             android:exported="false"/>
         <activity
             android:name=".mailTPU.MailActivity"
-            android:label="Почта ТПУ"/>
+            android:label="Почта ТПУ"
+            android:exported="true"
+            android:launchMode="singleTask"/>
         <activity android:name=".MainScreen"
             tools:ignore="Instantiatable" />
         <activity

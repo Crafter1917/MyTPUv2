@@ -438,13 +438,11 @@ public class DashboardActivity extends AppCompatActivity
         int id = item.getItemId();
 
         if (id == R.id.nav_dashboard) {
-            // Уже на этом экране
+
         } else if (id == R.id.nav_schedule) {
             startActivity(new Intent(this, ScheduleActivity.class));
         } else if (id == R.id.nav_mail) {
             startActivity(new Intent(this, com.example.mytpu.mailTPU.MailActivity.class));
-        } else if (id == R.id.nav_notifications) { // Добавленный пункт
-            startActivity(new Intent(this, NotificationsActivity.class));
         } else if (id == R.id.nav_logout) {
             executor.execute(this::logout);
         }
@@ -577,8 +575,6 @@ public class DashboardActivity extends AppCompatActivity
             coursesContainer.addView(courseItem);
         }
     }
-
-
 
     private void logout() {
         try {

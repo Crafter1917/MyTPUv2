@@ -1,5 +1,5 @@
 // TodayScheduleFragment.java
-package com.example.mytpu.schedule;
+package com.example.mytpu;
 
 import static android.content.ContentValues.TAG;
 
@@ -15,8 +15,15 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-import com.example.mytpu.R;
+
+import com.example.mytpu.schedule.ScheduleActivity;
+import com.example.mytpu.schedule.ScheduleCardHelper;
+import com.example.mytpu.schedule.ScheduleDataLoader;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class TodayScheduleFragment extends Fragment {
     private LinearLayout scheduleContainer;
@@ -52,7 +59,11 @@ public class TodayScheduleFragment extends Fragment {
         scheduleContainer = view.findViewById(R.id.scheduleContainer);
         progressBar = view.findViewById(R.id.progressBar);
 
-        Log.d(TAG, "Saved group: " + savedGroup); // Добавить лог
+        // Установим текущую дату в заголовок
+        TextView tvTitle = view.findViewById(R.id.tvTitle);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd MMMM", new Locale("ru"));
+        String dateString = sdf.format(new Date());
+        tvTitle.setText("Расписание на " + dateString);
 
         if (savedGroup != null && !savedGroup.isEmpty()) {
             loadTodaySchedule(savedGroup);

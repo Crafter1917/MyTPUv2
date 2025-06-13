@@ -554,6 +554,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("DefaultLocale")
     private void displayForumDiscussions(JSONArray discussions) throws JSONException {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < discussions.length(); i++) {
@@ -855,8 +856,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         parent.addView(tv);
     }
 
-
-
     private void setupAttemptButton(int quizId, int cmid) {
         runOnUiThread(() -> {
             LinearLayout container = findViewById(R.id.contentLayout);
@@ -914,7 +913,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 .show();
     }
 
-
     private int getRemainingAttempts() {
         try {
             if (currentQuiz == null) return 0;
@@ -941,7 +939,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         }
         return null;
     }
-
 
     private void processNewAttempt(int quizId, int cmid) throws JSONException, IOException {
         HttpUrl startUrl = buildApiUrl("mod_quiz_start_attempt")
@@ -987,8 +984,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
             }
         });
     }
-
-
 
     private void loadAttemptQuestions(int attemptId) throws JSONException, IOException {
         HttpUrl questionsUrl = buildApiUrl("mod_quiz_get_attempt_data")
@@ -1075,7 +1070,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         }
         return options;
     }
-
 
     @Override
     protected void onDestroy() {

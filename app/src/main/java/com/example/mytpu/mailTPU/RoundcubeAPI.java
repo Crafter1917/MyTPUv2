@@ -1,15 +1,10 @@
 package com.example.mytpu.mailTPU;
 
-import static com.example.mytpu.mailTPU.MailActivity.client;
 import static com.example.mytpu.mailTPU.MailActivity.context;
 import static com.example.mytpu.mailTPU.MailActivity.getCsrfToken;
-
-import static org.chromium.base.ContentUriUtils.getMimeType;
-import static org.chromium.base.ThreadUtils.runOnUiThread;
-import static java.nio.file.Files.createTempFile;
+import static org.chromium.base.ContextUtils.getApplicationContext;
 
 import android.annotation.SuppressLint;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
@@ -17,16 +12,11 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
-import android.text.Html;
 import android.text.TextUtils;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
-import android.widget.Toast;
-
-import com.example.mytpu.R;
 import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.FileUtils;
 import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.IOUtils;
-
 import org.chromium.base.ContentUriUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -36,9 +26,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Entities;
 import org.jsoup.parser.Parser;
-import org.jsoup.safety.Safelist;
 import org.jsoup.select.Elements;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -47,19 +35,13 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.stream.Collectors;
-
 import okhttp3.Cookie;
-import okhttp3.FormBody;
-import okhttp3.Headers;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -112,20 +94,27 @@ public class RoundcubeAPI {
 
     public static JSONArray fetchMessages(Context context, int currentPage, String folder)
             throws IOException, JSONException, MailActivity.SessionExpiredException {
+
+        String newToken = MailActivity.refreshCsrfToken(context);
+        if (newToken.isEmpty()) {
+            throw new MailActivity.SessionExpiredException("Failed to refresh CSRF token");
+        }
+
+
         Log.i(TAG, "Fetching messages list for page: " + currentPage);
         OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
-        // Измените метод fetchMessages:
         HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
                 .addQueryParameter("_task", "mail")
                 .addQueryParameter("_action", "list")
-                .addQueryParameter("_layout", "widescreen") // Добавлено
-                .addQueryParameter("_mbox", folder)
+                .addQueryParameter("_layout", "widescreen")
+                .addQueryParameter("_mbox", folder) // Используем нормализованное имя
                 .addQueryParameter("_page", String.valueOf(currentPage))
                 .addQueryParameter("_remote", "1")
-                .addQueryParameter("_unlock", "loading" + System.currentTimeMillis()) // Добавлено
+                .addQueryParameter("_unlock", "loading" + System.currentTimeMillis())
                 .addQueryParameter("_", String.valueOf(System.currentTimeMillis()))
                 .addQueryParameter("_token", getCsrfToken(context))
                 .build();
+
 
         Log.d("API", "Fetching messages from: " + url);
         request = new Request.Builder()
@@ -139,7 +128,7 @@ public class RoundcubeAPI {
                     + "\nCode: " + response.code()
                     + "\nBody length: " + responseBody.length() + " chars");
             Log.d("API", "Response code: " + response.code());
-            Log.d("API", "Response headers: " + response.headers());
+            //Log.d("API", "Response headers: " + response.headers());
             Log.d("API", "Full response: " + responseBody);
             handleResponseErrors(response, responseBody);
             JSONObject jsonResponse = new JSONObject(responseBody);
@@ -155,6 +144,8 @@ public class RoundcubeAPI {
         } catch (TooManyAttemptsException e) {
             throw new RuntimeException(e);
         }
+
+
     }
 
     private static JSONArray parseJsResponse(String jsCode) throws JSONException {
@@ -170,13 +161,19 @@ public class RoundcubeAPI {
             try {
                 String uid = matcher.group(1);
                 String rawJson = matcher.group(2)
-                        .replaceAll("(?<!\\\\)'", "\"")
+                        .replace("\\'", "'")
+                        .replace("'", "\"")
                         .replace("\\\"", "\"")
                         .replace("\\\\", "\\")
                         .replace("\\/", "/")
-                        .replace("\"", "'");
+                        .replace("\n", " ") // Добавляем замену переносов строк
+                        .replace("\r", " ") // И возвратов каретки
+                        .replace("\t", " "); // И табуляции
 
-                // Sanitize the JSON by escaping quotes within string values
+                // Декодируем HTML-сущности
+                String decodedJson = Parser.unescapeEntities(rawJson, true);
+
+                JSONObject emailJson = new JSONObject(decodedJson);
                 StringBuilder sanitizedJson = new StringBuilder();
                 Pattern valuePattern = Pattern.compile(":\"(.*?)(?<!\\\\)\"", Pattern.DOTALL);
                 Matcher valueMatcher = valuePattern.matcher(rawJson);
@@ -190,13 +187,7 @@ public class RoundcubeAPI {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     valueMatcher.appendTail(sanitizedJson);
                 }
-                String processedJson = sanitizedJson.toString();
-                String decodedJson = Parser.unescapeEntities(processedJson, true);
-                decodedJson = decodedJson.replaceAll("<[^>]+>", "");
-
-                JSONObject emailJson = new JSONObject(decodedJson);
                 emailJson.put("uid", uid);
-                Log.d("RoundcubeAPI", "Parsed email: " + uid);
                 result.put(emailJson);
             } catch (JSONException e) {
                 Log.e("RoundcubeAPI", "JSON parse error: " + e.getMessage());
@@ -617,7 +608,7 @@ public class RoundcubeAPI {
     public static boolean sendComposedEmail(Context context, String to, String subject, String body,
                                             List<Uri> attachments, String csrfToken) throws IOException {
         try {
-            // 1. Создаем черновик
+            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
             JSONObject composeData = createDraft(context, csrfToken);
             String composeId = composeData.getString("id");
             String from = composeData.getString("from");
@@ -702,7 +693,7 @@ public class RoundcubeAPI {
                 .url(url)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .build();
-
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
         try (Response response = client.newCall(request).execute()) {
             String html = response.body().string();
             Document doc = Jsoup.parse(html);
@@ -777,7 +768,7 @@ public class RoundcubeAPI {
                 .addQueryParameter("_forward_uid", emailId)
                 .addQueryParameter("_token", csrfToken)
                 .build();
-
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
         String composeHtml;
         try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
             composeHtml = response.body().string();
@@ -863,7 +854,7 @@ public class RoundcubeAPI {
                 .addQueryParameter("_mbox", "INBOX")
                 .addQueryParameter("_token", csrfToken)
                 .build();
-
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
         try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
             String html = response.body().string();
             Log.d(TAG, "Compose page HTML length: " + html.length());

@@ -21,4 +21,6 @@
     <color name="active_day_background">#37474F</color>
     <color name="border_color">#757575</color>
     <color name="link_color">#82B1FF</color>
+    <color name="light_gray">#1A1A1A</color>
+    <color name="backroundalarm">#1A1A1A</color>
 </resources>

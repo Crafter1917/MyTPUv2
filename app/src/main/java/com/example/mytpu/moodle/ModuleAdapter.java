@@ -27,7 +27,7 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
         this.modules = modules;
         this.context = context;
     }
-    // Вынесем класс CourseModule в отдельный статический класс
+
     public static class CourseModule {
         @SerializedName("id")
         int cmid;
@@ -79,9 +79,6 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
             return url;
         }
 
-        public String getDescription() {
-            return description;
-        }
     }
 
     @NonNull
@@ -96,12 +93,10 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
     @Override
     public void onBindViewHolder(@NonNull ModuleViewHolder holder, int position) {
         CourseModule module = modules.get(position);
-
         holder.moduleName.setText(module.getName());
         holder.moduleType.setText(getModuleType(module.getType()));
         holder.moduleIcon.setImageResource(getIconForType(module.getType()));
 
-        // Анимация нажатия
         holder.itemView.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(100).start();
@@ -112,7 +107,6 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
             return false;
         });
 
-        // Добавляем обработчик клика
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, ModuleDetailActivity.class);
             intent.putExtra("cmid", module.getCmid());
@@ -124,6 +118,7 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
             context.startActivity(intent);
         });
     }
+
     private int getIconForType(String type) {
         switch (type) {
             case "resource": return R.drawable.ic_file;

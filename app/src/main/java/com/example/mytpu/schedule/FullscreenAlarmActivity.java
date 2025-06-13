@@ -1,10 +1,13 @@
 package com.example.mytpu.schedule;
 
+import android.app.NotificationManager;
+import android.content.SharedPreferences;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -13,8 +16,13 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.mytpu.R;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class FullscreenAlarmActivity extends AppCompatActivity {
     private Ringtone ringtone;
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,10 +46,32 @@ public class FullscreenAlarmActivity extends AppCompatActivity {
         info.setText("Пара " + paraNumber + ": " + subject + "\nВремя: " + time);
 
         Button dismissButton = findViewById(R.id.dismiss_button);
-        dismissButton.setOnClickListener(v -> finish());
+        dismissButton.setOnClickListener(v -> {
+            String todayKey = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+            String alarmKey = todayKey + "_" + paraNumber;
+
+            SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
+            prefs.edit().putBoolean(alarmKey, true).apply();
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.cancel(AlarmReceiver.NOTIFICATION_ID + paraNumber);
+
+            // Останавливаем звук и закрываем активность
+            if (ringtone != null && ringtone.isPlaying()) {
+                ringtone.stop();
+            }
+            finish();
+        });
 
         // Запускаем звук будильника
         playAlarmSound();
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        wakeLock = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK |
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP |
+                        PowerManager.ON_AFTER_RELEASE,
+                "MyApp::AlarmWakeLock"
+        );
+        wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/);
     }
 
     private void playAlarmSound() {
@@ -59,6 +89,9 @@ public class FullscreenAlarmActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
         super.onDestroy();
         if (ringtone != null && ringtone.isPlaying()) {
             ringtone.stop();

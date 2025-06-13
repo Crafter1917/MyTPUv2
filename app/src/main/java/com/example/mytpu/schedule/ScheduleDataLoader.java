@@ -66,19 +66,32 @@ public class ScheduleDataLoader {
         JSONArray faculties = root.getJSONArray("faculties");
         SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
 
-        Calendar today = Calendar.getInstance();
-        String todayStr = sdf.format(today.getTime());
+        // Получаем текущую дату и день недели
+        Calendar todayCal = Calendar.getInstance();
+        todayCal.setFirstDayOfWeek(Calendar.MONDAY);
+        todayCal.setMinimalDaysInFirstWeek(4);
+        int currentWeek = todayCal.get(Calendar.WEEK_OF_YEAR);
+        int currentYear = todayCal.get(Calendar.YEAR);
+
+        // Получаем текущий день недели в формате JSON (1=пн, 7=вс)
+        int currentCalendarDay = todayCal.get(Calendar.DAY_OF_WEEK);
+        int currentJsonDay = convertCalendarDayToJsonDay(currentCalendarDay);
+        Log.d(TAG, "Current JSON day: " + currentJsonDay + " (Calendar day: " + currentCalendarDay + ")");
+
         String normalizedQuery = normalizeString(query);
-        Log.d(TAG, "normalizedQuery: "+normalizedQuery);
+        Log.d(TAG, "normalizedQuery: " + normalizedQuery);
+
         for (int i = 0; i < faculties.length(); i++) {
             JSONObject faculty = faculties.getJSONObject(i);
             JSONArray groups = faculty.getJSONArray("groups");
             Log.d(TAG, "groups!");
+
             for (int j = 0; j < groups.length(); j++) {
                 JSONObject group = groups.getJSONObject(j);
                 String groupName = group.getString("name").trim();
                 String normalizedGroupName = normalizeString(groupName);
-                Log.d(TAG, "groupName: "+groupName);
+                Log.d(TAG, "groupName: " + groupName);
+
                 if (normalizedGroupName.equals(normalizedQuery)) {
                     Log.d(TAG, "Group matched: " + groupName);
                     JSONArray lessons = group.getJSONArray("lessons");
@@ -86,24 +99,54 @@ public class ScheduleDataLoader {
                     for (int k = 0; k < lessons.length(); k++) {
                         JSONObject lesson = lessons.getJSONObject(k);
                         JSONObject date = lesson.getJSONObject("date");
-                        String dateStr = date.getString("start").trim(); // Добавлен trim()
-                        // Исправленное условие проверки
-                        if (todayStr.equals(dateStr)) {
+                        String dateStr = date.getString("start").trim();
+
+                        // Проверяем неделю и год
+                        Date lessonDate = sdf.parse(dateStr);
+                        Calendar lessonCal = Calendar.getInstance();
+                        lessonCal.setTime(lessonDate);
+                        lessonCal.setFirstDayOfWeek(Calendar.MONDAY);
+                        lessonCal.setMinimalDaysInFirstWeek(4);
+
+                        int lessonWeek = lessonCal.get(Calendar.WEEK_OF_YEAR);
+                        int lessonYear = lessonCal.get(Calendar.YEAR);
+
+                        // Получаем день недели занятия
+                        int lessonJsonDay = date.getInt("weekday");
+
+                        // Проверяем совпадение недели, года и дня
+                        if (lessonWeek == currentWeek &&
+                                lessonYear == currentYear &&
+                                lessonJsonDay == currentJsonDay) {
+
                             Log.d(TAG, "Adding lesson for date: " + dateStr);
                             ScheduleActivity.LessonData lessonData = parseLesson(lesson, groupName);
                             if (lessonData != null) {
                                 result.add(lessonData);
                             }
-                        } else {
-                            continue;
                         }
                     }
-                    break; // Выходим только из цикла групп
+                    break;
                 }
             }
         }
         Log.d(TAG, "Total lessons found: " + result.size());
         return result;
+    }
+
+    // Преобразование формата дней недели
+    private int convertCalendarDayToJsonDay(int calendarDay) {
+        switch(calendarDay) {
+
+            case Calendar.MONDAY:    return 1;
+            case Calendar.TUESDAY:   return 2;
+            case Calendar.WEDNESDAY: return 3;
+            case Calendar.THURSDAY:  return 4;
+            case Calendar.FRIDAY:    return 5;
+            case Calendar.SATURDAY:  return 6;
+            case Calendar.SUNDAY:    return 7;
+            default: return -1;
+        }
     }
 
     // Вынесенный метод нормализации

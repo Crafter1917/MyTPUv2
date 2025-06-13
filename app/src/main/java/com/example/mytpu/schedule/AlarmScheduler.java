@@ -14,6 +14,7 @@ import androidx.annotation.RequiresPermission;
 
 import com.example.mytpu.R;
 
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -29,6 +30,9 @@ public class AlarmScheduler {
     public static void scheduleAlarms(Context context, List<ScheduleActivity.LessonData> lessons, int minutesBefore) {
         Log.d(TAG, "Starting alarm scheduling...");
         cancelAllAlarms(context);
+
+        // Сбрасываем флаги отключения для сегодняшнего дня
+        resetDismissedAlarms(context);
 
         if (lessons == null || lessons.isEmpty()) {
             Log.d(TAG, "No lessons to schedule alarms");
@@ -107,7 +111,10 @@ public class AlarmScheduler {
         Log.d(TAG, String.format(Locale.getDefault(),
                 "Scheduling alarm for lesson: %s at %tR (alarm at %tR, %d minutes before)",
                 lesson.subject, lesson.startTime, alarmTime, minutesBefore));
-
+        if (alarmTime.getTimeInMillis() < System.currentTimeMillis()) {
+            Log.d(TAG, "Skipping past alarm for: " + lesson.subject);
+            return;
+        }
         // Создаем интент для будильника
         Intent intent = new Intent(context, AlarmReceiver.class);
         intent.putExtra("para_number", lesson.paraNumber);
@@ -146,10 +153,18 @@ public class AlarmScheduler {
             alarmManager.cancel(pendingIntent);
         }
     }
+    private static void resetDismissedAlarms(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
 
-    public static int getSavedMinutes(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        return prefs.getInt("alarm_minutes", 30);
+        // Удаляем все флаги для текущего дня
+        String todayKey = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        for (String key : prefs.getAll().keySet()) {
+            if (key.startsWith(todayKey)) {
+                editor.remove(key);
+            }
+        }
+        editor.apply();
     }
 
     public static boolean isAlarmEnabled(Context context) {

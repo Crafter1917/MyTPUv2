@@ -14,4 +14,10 @@
     </style>
 
     <style name="Theme.MyTPU" parent="Base.Theme.MyTPU" />
+    <style name="TimePickerStyle" parent="Theme.AppCompat.Light">
+        <item name="android:timePickerMode">clock</item>
+        <item name="android:numbersTextColor">?android:attr/textColorPrimary</item>
+        <item name="android:numbersSelectorColor">@color/primaryColor</item>
+        <item name="android:numbersBackgroundColor">@android:color/transparent</item>
+    </style>
 </resources>

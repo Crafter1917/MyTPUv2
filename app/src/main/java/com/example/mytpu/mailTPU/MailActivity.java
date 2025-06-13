@@ -2,11 +2,16 @@ package com.example.mytpu.mailTPU;
 
 
 import static android.content.ContentValues.TAG;
-
-
+import static com.example.mytpu.mailTPU.MailCheckWorker.KEY_LAST_UIDS;
+import static com.example.mytpu.mailTPU.MailCheckWorker.PREFS_NAME;
+import android.Manifest;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,35 +21,39 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.WebView;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.Toolbar;
-
+import androidx.appcompat.widget.Toolbar;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.RecyclerView;
-
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
-
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
 import com.example.mytpu.R;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.navigation.NavigationView;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -52,16 +61,15 @@ import org.jsoup.Jsoup;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import okhttp3.Cookie;
 import okhttp3.FormBody;
-import okhttp3.Headers;
 import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
@@ -71,15 +79,16 @@ import okhttp3.Response;
 
 public class MailActivity extends AppCompatActivity {
     private SharedPreferences mainPrefs;
+    private AlarmManager alarmManager;
+    private PendingIntent alarmPendingIntent;
     private RecyclerView emailsRecyclerView;
     private SwipeRefreshLayout swipeRefreshLayout;
     private ExtendedFloatingActionButton fabCompose;
     private ExecutorService executor;
     private static SharedPreferences sharedPreferences;
-    public static OkHttpClient client;
     private EmailAdapter adapter;
-    private String username;
-    private String password;
+    private static String username;
+    private static String password;
     private boolean isActivityDestroyed = false;
     private long lastToastTime = 0;
     private static final long TOAST_INTERVAL = 3000; // 3 секунды
@@ -91,24 +100,149 @@ public class MailActivity extends AppCompatActivity {
     private NavigationView navigationView;
     private DrawerLayout drawerLayout;
     private String currentFolder = "INBOX";
+    private static final int PERMISSION_REQUEST_CODE = 1001;
+    private ScheduledExecutorService scheduler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_mail);
         context = this;
+        initSharedPreferences(this);
         executor = Executors.newFixedThreadPool(2);
-        client = MyMailSingleton.getInstance(MailActivity.this).getClient();
-        if (client == null) {
-            Log.d(TAG, "Client initialization failed");
-            finish();
-            return;
-        }
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        startCsrfTokenRefresh();
         initNavigationDrawer();
         initViews();
-        setupSecureStorage();
+        setupSecureStorage();checkAuthAndLoadEmails();
         setupRefresh();
-        checkAuthAndLoadEmails();
+
+        requestNotificationPermission();
+        WorkManager.getInstance(this).enqueueUniqueWork(
+                "mailCheck",
+                ExistingWorkPolicy.REPLACE,
+                new OneTimeWorkRequest.Builder(MailCheckWorker.class)
+                        .setInitialDelay(0, TimeUnit.MINUTES)
+                        .build()
+        );
+        observeWorkManager();
+        //findViewById(R.id.test_button).setOnClickListener(v -> {
+        //    WorkManager.getInstance(this).enqueue(
+        //            new OneTimeWorkRequest.Builder(MailCheckWorker.class).build()
+        //    );
+        //});
+
+        initAlarmSystem();
+    }
+    private void initAlarmSystem() {
+        alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(this, MailReceiver.class);
+        alarmPendingIntent = PendingIntent.getBroadcast(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        // Запускаем первый вызов сразу
+        scheduleNextAlarm(0);
+    }
+    public void scheduleNextAlarm(long delayMinutes) {
+        long triggerAtMillis = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    alarmPendingIntent
+            );
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    alarmPendingIntent
+            );
+        } else {
+            alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    alarmPendingIntent
+            );
+        }
+
+        Log.d(TAG, "Next alarm scheduled in " + delayMinutes + " minutes");
+    }
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                ActivityCompat.requestPermissions(
+                        this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        PERMISSION_REQUEST_CODE
+                );
+            }
+        }
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Уведомления отключены", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    // MailActivity.java
+    public static void initSharedPreferences(Context context) {
+        if (sharedPreferences == null) {
+            try {
+                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+                sharedPreferences = EncryptedSharedPreferences.create(
+                        "mail_credentials",
+                        masterKeyAlias,
+                        context, // Используем переданный контекст
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                );
+            } catch (Exception e) {
+                Log.e(TAG, "SharedPreferences init failed", e);
+            }
+        }
+    }
+    private void startCsrfTokenRefresh() {
+        scheduler.scheduleWithFixedDelay(() -> {
+            if (isActivityDestroyed) return;
+
+            try {
+                refreshCsrfTokenSync();
+            } catch (IOException e) {
+                Log.w(TAG, "Periodic CSRF refresh failed");
+            }
+        }, 0, 5, TimeUnit.MINUTES); // Каждые 5 минут
+    }
+
+    private void scheduleMailCheck() {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        // Изменено на 1 минуту вместо 15
+        PeriodicWorkRequest mailCheckRequest = new PeriodicWorkRequest.Builder(
+                MailCheckWorker.class,
+                1, // 1 минута
+                TimeUnit.MINUTES
+        )
+                .setConstraints(constraints)
+                .build();
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "mailCheck",
+                ExistingPeriodicWorkPolicy.UPDATE, // Исправлено на UPDATE
+                mailCheckRequest
+        );
     }
 
     private void initNavigationDrawer() {
@@ -157,6 +291,7 @@ public class MailActivity extends AppCompatActivity {
             toolbar.setTitle(getFolderTitle(currentFolder));
         });
     }
+
     public static String getCsrfToken(Context context) {
         if (sharedPreferences == null) {
             throw new IllegalStateException("SharedPreferences not initialized");
@@ -164,17 +299,6 @@ public class MailActivity extends AppCompatActivity {
         return sharedPreferences.getString("csrf_token", "");
     }
 
-
-    private Runnable sessionMaintainer = new Runnable() {
-        @Override
-        public void run() {
-            if (!isActivityDestroyed) {
-                refreshSession();
-                sessionHandler.postDelayed(this, 300000); // Каждые 5 минут
-            }
-        }
-    };
-    // Новый метод для обновления токена
     public static String refreshCsrfToken(Context context) {
         OkHttpClient client = MyMailSingleton.getInstance(context).getClient();
         String newToken = "";
@@ -196,7 +320,6 @@ public class MailActivity extends AppCompatActivity {
         return newToken; // Возвращаем токен
     }
 
-    // В класс MailActivity добавить
     public static String getCookiesForWebView() {
         List<Cookie> cookies = MyMailSingleton.getInstance(context)
                 .cookieJar.loadForRequest(HttpUrl.get("https://letter.tpu.ru"));
@@ -307,7 +430,7 @@ public class MailActivity extends AppCompatActivity {
         }
     }
 
-    private void setupRefresh() {
+    public void setupRefresh() {
         swipeRefreshLayout.setOnRefreshListener(() -> {
             currentPage = 1;
             hasMore = true;
@@ -328,7 +451,7 @@ public class MailActivity extends AppCompatActivity {
                 // Ограничение попыток переаутентификации
                 int maxAttempts = 2;
                 for (int attempt = 0; attempt < maxAttempts; attempt++) {
-                    if (isSessionValid()) break;
+                    if (isSessionValid(context)) break;
 
                     Log.d("Session", "Reauthentication attempt: " + (attempt + 1));
                     boolean authSuccess = performReauthentication();
@@ -356,6 +479,7 @@ public class MailActivity extends AppCompatActivity {
     }
 
     void refreshCsrfTokenSync() throws IOException {
+        if (isActivityDestroyed) return;
         OkHttpClient client = MyMailSingleton.getInstance(this).getClient();
 
         Request request = new Request.Builder()
@@ -367,11 +491,14 @@ public class MailActivity extends AppCompatActivity {
             if (response.isSuccessful()) {
                 String html = response.body().string();
                 String newCsrf = extractCsrfToken(html);
+                Log.d(TAG, "CSRF token refreshed: " + (newCsrf));
                 if (!newCsrf.isEmpty()) {
                     sharedPreferences.edit().putString("csrf_token", newCsrf).apply();
                 }
             }
         }
+
+
     }
 
     private void checkForSessionError(JSONArray response) throws SessionExpiredException {
@@ -406,6 +533,18 @@ public class MailActivity extends AppCompatActivity {
                     swipeRefreshLayout.setRefreshing(false);
                     isLoading = false;
                 });
+                if (clear && messages.length() > 0) {
+                    Set<String> currentUids = new HashSet<>();
+                    for (int i = 0; i < messages.length(); i++) {
+                        JSONObject msg = messages.getJSONObject(i);
+                        currentUids.add(msg.optString("uid", ""));
+                    }
+
+                    SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                    prefs.edit()
+                            .putStringSet(KEY_LAST_UIDS, currentUids)
+                            .apply();
+                }
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     handleError("Load error", e);
@@ -415,7 +554,6 @@ public class MailActivity extends AppCompatActivity {
         });
     }
 
-
     public static void handleCsrfError(Context context) {
         // Ваша логика обработки ошибки CSRF
         Toast.makeText(context, "CSRF Token Expired", Toast.LENGTH_LONG).show();
@@ -423,7 +561,7 @@ public class MailActivity extends AppCompatActivity {
                 .url("https://letter.tpu.ru/mail/?_task=mail")
                 .header("Cache-Control", "no-cache")
                 .build();
-
+        OkHttpClient client = MyMailSingleton.getInstance(context).getClient();
         try (Response response = client.newCall(request).execute()) {
             if (response.isSuccessful()) {
                 String html = response.body().string();
@@ -436,6 +574,7 @@ public class MailActivity extends AppCompatActivity {
             throw new RuntimeException(e);
         }
     }
+
     private void handleError(String message, Exception e) {
         Log.d(TAG, message+e);
 
@@ -445,12 +584,12 @@ public class MailActivity extends AppCompatActivity {
             } else if (e.getMessage().contains("timed out")) {
                 showToast("Таймаут соединения");
             } else {
-                showToast("Ошибка сети");
+            //    showToast("Ошибка сети");
             }
         } else if (e instanceof JSONException) {
             showToast("Ошибка формата данных");
         } else {
-            showToast("Неизвестная ошибка");
+            //  showToast("Неизвестная ошибка");
         }
 
         if (e instanceof SessionExpiredException) {
@@ -458,12 +597,12 @@ public class MailActivity extends AppCompatActivity {
         }
     }
 
-    private void clearSessionData() {
+    private static void clearSessionData(Context context) {
         // Полная очистка всех данных сессии
         sharedPreferences.edit()
                 .clear()
                 .apply();
-
+        OkHttpClient client = MyMailSingleton.getInstance(MailActivity.context).getClient();
         client.cookieJar().saveFromResponse(
                 HttpUrl.get("https://letter.tpu.ru"),
                 Collections.emptyList()
@@ -473,16 +612,16 @@ public class MailActivity extends AppCompatActivity {
         client.connectionPool().evictAll();
     }
 
-    private static JSONObject performMailLogin(String username, String password)
+    public static JSONObject performMailLogin(String username, String password)
             throws IOException, JSONException {
-
-        // Clear existing cookies
+        OkHttpClient client = MyMailSingleton.getInstance(context).getClient();
+        // 1. Полная очистка кук
         client.cookieJar().saveFromResponse(
                 HttpUrl.get("https://letter.tpu.ru"),
                 Collections.emptyList()
         );
 
-        // 1. Get initial page and CSRF token
+        // 2. Первый запрос для получения CSRF
         Request getRequest = new Request.Builder()
                 .url("https://letter.tpu.ru/mail/?_task=login")
                 .header("User-Agent", "MyTPUApp/1.0")
@@ -490,16 +629,11 @@ public class MailActivity extends AppCompatActivity {
 
         Response getResponse = client.newCall(getRequest).execute();
         String responseBody = getResponse.body().string();
-        Log.d("Auth", "Initial GET response body: " + responseBody); // Log response body
-
         String csrfToken = extractCsrfToken(responseBody);
-        Log.d("Auth", "Extracted CSRF token: " + csrfToken);
 
-        if (csrfToken.isEmpty()) {
-            throw new IOException("Failed to extract CSRF token");
-        }
+        Log.d("Auth", "Step1: Got CSRF: " + csrfToken);
 
-        // 2. Send login request
+        // 3. Формируем запрос на вход
         RequestBody formBody = new FormBody.Builder()
                 .add("_token", csrfToken)
                 .add("_task", "login")
@@ -507,7 +641,7 @@ public class MailActivity extends AppCompatActivity {
                 .add("_user", username)
                 .add("_pass", password)
                 .add("_timezone", "Europe/Moscow")
-                .add("_remember", "1") // Add remember me parameter if required
+                .add("_remember", "1")
                 .build();
 
         Request loginRequest = new Request.Builder()
@@ -516,43 +650,66 @@ public class MailActivity extends AppCompatActivity {
                 .header("Referer", "https://letter.tpu.ru/mail/?_task=login")
                 .build();
 
+        // 4. Выполняем вход
         try (Response loginResponse = client.newCall(loginRequest).execute()) {
-            // Log response details
-            Log.d("Auth", "Login response code: " + loginResponse.code());
-            Log.d("Auth", "Login response headers: " + loginResponse.headers());
-            Log.d("Auth", "Response cookies: " + client.cookieJar().loadForRequest(HttpUrl.get("https://letter.tpu.ru")));
+            // 5. Проверяем редирект
+            if (loginResponse.isRedirect()) {
+                String location = loginResponse.header("Location");
+                if (location != null && location.contains("_task=mail")) {
+                    Log.d("Auth", "Login redirect success");
+                    return new JSONObject().put("success", true);
+                }
+            }
 
-            // Check for server-side error messages in response body
+            // 6. Проверяем куки вручную
+            List<Cookie> cookies = client.cookieJar()
+                    .loadForRequest(HttpUrl.get("https://letter.tpu.ru"));
+
+            Log.d("Auth", "Received cookies: " + cookies.size());
+            for (Cookie cookie : cookies) {
+                Log.d("Auth", "Cookie: " + cookie.name() + "=" + cookie.value());
+            }
+
+            // 7. Проверяем наличие сессионной куки
+            boolean hasSession = cookies.stream().anyMatch(c ->
+                    c.name().equals("roundcube_sessauth") && !c.value().isEmpty()
+            );
+
+            if (hasSession) {
+                Log.d("Auth", "Session cookie found");
+                return new JSONObject().put("success", true);
+            }
+
+            // 8. Если куки нет, проверяем ответ сервера
             String loginResponseBody = loginResponse.body().string();
             if (loginResponseBody.contains("Invalid username or password")) {
                 throw new IOException("Invalid credentials");
             }
 
-            // 3. Check redirect
-            if (loginResponse.isRedirect()) {
-                String location = loginResponse.header("Location");
-                if (location != null && location.contains("_task=mail")) {
-                    return new JSONObject().put("success", true);
+            // 9. Проверяем JavaScript-редирект в теле ответа
+            if (loginResponseBody.contains("window.location.href")) {
+                Pattern redirectPattern = Pattern.compile("window\\.location\\.href\\s*=\\s*['\"]([^'\"]+)");
+                Matcher matcher = redirectPattern.matcher(loginResponseBody);
+                if (matcher.find()) {
+                    String redirectUrl = matcher.group(1);
+                    Log.d("Auth", "Found JS redirect to: " + redirectUrl);
+
+                    // Выполняем редирект
+                    Request redirectRequest = new Request.Builder()
+                            .url(redirectUrl)
+                            .build();
+
+                    try (Response redirectResponse = client.newCall(redirectRequest).execute()) {
+                        if (redirectResponse.isSuccessful()) {
+                            Log.d("Auth", "JS redirect success");
+                            return new JSONObject().put("success", true);
+                        }
+                    }
                 }
             }
 
-            // 4. Verify session cookie directly from headers
-            Headers headers = loginResponse.headers();
-            String cookiesHeader = headers.get("Set-Cookie");
-            boolean hasSessionCookie = cookiesHeader != null && cookiesHeader.contains("roundcube_sessauth");
-
-            // Also check stored cookies
-            List<Cookie> cookies = client.cookieJar()
-                    .loadForRequest(HttpUrl.get("https://letter.tpu.ru"));
-
-            hasSessionCookie |= cookies.stream()
-                    .anyMatch(c -> c.name().equals("roundcube_sessauth") && !c.value().isEmpty());
-
-            if (hasSessionCookie) {
-                return new JSONObject().put("success", true);
-            }
-
-            throw new IOException("No session cookie received. Response body: " + loginResponseBody);
+            throw new IOException("No session cookie received. Response code: " +
+                    loginResponse.code() + ", Body: " + loginResponseBody.substring(0, 200));
         }
     }
 
@@ -567,7 +724,9 @@ public class MailActivity extends AppCompatActivity {
         return "";
     }
 
-    private boolean isSessionValid() {
+    public static boolean isSessionValid(Context context) {
+        initSharedPreferences(context);
+        OkHttpClient client = MyMailSingleton.getInstance(MailActivity.context).getClient();
         List<Cookie> cookies = client.cookieJar().loadForRequest(
                 HttpUrl.get("https://letter.tpu.ru")
         );
@@ -580,19 +739,21 @@ public class MailActivity extends AppCompatActivity {
         // Дополнительная проверка через API
         if (hasValidSession) {
             try {
+                // Проверка через API вместо проверки кук
                 Request testRequest = new Request.Builder()
                         .url("https://letter.tpu.ru/mail/?_task=mail&_action=getunread")
                         .build();
+
                 Response testResponse = client.newCall(testRequest).execute();
-                if (testResponse.code() == 401) return false;
+                return testResponse.code() == 200;
             } catch (IOException e) {
-                Log.d(TAG, "Session validation request failed"+ e);
+                Log.d(TAG, "Session validation request failed: " + e.getMessage());
+                return false;
             }
         }
-
+        Log.d(TAG, "Session valid: " + hasValidSession);
         return hasValidSession;
     }
-
 
     private List<Email> parseMessages(JSONArray messages) throws JSONException {
         List<Email> emails = new ArrayList<>();
@@ -676,7 +837,7 @@ public class MailActivity extends AppCompatActivity {
     private void loadEmails() {
         executor.execute(() -> {
             try {
-                if (!isSessionValid()) {
+                if (!isSessionValid(context)) {
                     throw new SessionExpiredException("Session expired");
                 }
 
@@ -729,7 +890,7 @@ public class MailActivity extends AppCompatActivity {
 
             executor.execute(() -> {
                 try {
-                    clearSessionData();
+                    clearSessionData(context);
                     boolean authSuccess = performReauthentication();
 
                     runOnUiThread(() -> {
@@ -791,19 +952,25 @@ public class MailActivity extends AppCompatActivity {
         return originalDate;
     }
 
-    private String extractFrom(String fromto) {
+    public static String extractFrom(String fromto) {
         if (fromto == null || fromto.isEmpty()) return "Неизвестный отправитель";
 
-        // Пытаемся найти email
+        // Удаляем HTML-теги
+        String cleanFrom = Jsoup.parse(fromto).text();
+
+        // Извлекаем email
         Matcher emailMatcher = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b")
-                .matcher(fromto);
+                .matcher(cleanFrom);
         if (emailMatcher.find()) {
             return emailMatcher.group();
         }
 
-        // Пытаемся извлечь текст из HTML
-        String text = Jsoup.parse(fromto).text();
-        return text.isEmpty() ? "Неизвестный отправитель" : text;
+        // Упрощаем длинные адреса
+        if (cleanFrom.length() > 30) {
+            return cleanFrom.substring(0, 27) + "...";
+        }
+
+        return cleanFrom.isEmpty() ? "Неизвестный отправитель" : cleanFrom;
     }
 
     private void showToast(String message) {
@@ -815,60 +982,79 @@ public class MailActivity extends AppCompatActivity {
         }
     }
 
-    private void refreshSession() {
-        executor.execute(() -> {
-            try {
-                // Обновляем CSRF токен перед запросом
-                refreshCsrfTokenSync();
-
-                HttpUrl refreshUrl = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
-                        .addQueryParameter("_task", "mail")
-                        .addQueryParameter("_action", "refresh")
-                        .build();
-
-                Request request = new Request.Builder()
-                        .url(refreshUrl)
-                        .header("X-Requested-With", "XMLHttpRequest")
-                        .header("X-CSRF-Token", getCsrfToken(this))
-                        .build();
-
-                try (Response response = client.newCall(request).execute()) {
-                    if (response.code() == 401) {
-                        throw new SessionExpiredException("Session expired during refresh");
-                    }
-                    // Обновляем CSRF токен после успешного запроса
-                    refreshCsrfTokenSync();
-                }
-            } catch (Exception e) {
-                Log.d("Session", "Refresh error"+ e);
-                handleSessionExpired();
-            }
-        });
-    }
     @Override
     protected void onResume() {
         super.onResume();
-        sessionHandler.postDelayed(sessionMaintainer, 300000);
+
+        WorkManager.getInstance(this).enqueue(
+                new OneTimeWorkRequest.Builder(MailCheckWorker.class).build()
+        );
+        checkSessionValidity();
+        setupRefresh();
     }
+
+    private void checkSessionValidity() {
+        executor.execute(() -> {
+            if (!isSessionValid(context)) {
+                Log.d(TAG, "Session expired, reauthenticating");
+                performReauthentication();
+                loadEmailsInternal(true);
+            }
+        });
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
-        sessionHandler.removeCallbacks(sessionMaintainer);
+        WorkManager.getInstance(this).enqueue(
+                new OneTimeWorkRequest.Builder(MailCheckWorker.class).build()
+        );
+        sessionHandler.removeCallbacksAndMessages(null);
+    }
+    private void observeWorkManager() {
+        WorkManager.getInstance(this)
+                .getWorkInfosForUniqueWorkLiveData("mailCheck")
+                .observe(this, workInfos -> {
+                    for (WorkInfo info : workInfos) {
+                        Log.d(TAG, "Work state: " + info.getState());
+                        if (info.getState() == WorkInfo.State.ENQUEUED) {
+                            long nextRun = info.getNextScheduleTimeMillis() - System.currentTimeMillis();
+                            Log.d(TAG, "Next run in: " + (nextRun / 60000) + " minutes");
+                        }
+                    }
+                });
     }
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        FileLogger.close();
         isActivityDestroyed = true;
-        if (executor != null && !executor.isShutdown()) {
-            executor.shutdownNow(); // Используем shutdownNow для немедленного прерывания
+
+        // 1. Отмена всех задач Handler
+        sessionHandler.removeCallbacksAndMessages(null);
+
+        alarmManager.cancel(alarmPendingIntent);
+        // 2. Остановка scheduler
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+
+        // 3. Остановка executor
+        if (executor != null) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+            }
         }
     }
 
     public static class MyMailSingleton {
         private static MyMailSingleton instance;
+        private final OkHttpClient client;
         private Context context;
-        private static OkHttpClient client = null;
         private final PersistentCookieJar cookieJar;
 
         private MyMailSingleton(Context context) {
@@ -883,7 +1069,7 @@ public class MailActivity extends AppCompatActivity {
         }
 
         public static synchronized MyMailSingleton getInstance(Context context) {
-            if (instance == null) {
+            if (instance == null || instance.client == null) {
                 instance = new MyMailSingleton(context);
             }
             return instance;
@@ -920,15 +1106,6 @@ public class MailActivity extends AppCompatActivity {
                 return chain.proceed(builder.build());
             }
 
-            private static String getCookiesString() {
-                List<Cookie> cookies = client.cookieJar()
-                        .loadForRequest(HttpUrl.parse("https://letter.tpu.ru/"));
-
-                return cookies.stream()
-                        .filter(c -> !c.name().equals("roundcube_sessauth")) // Исключаем устаревшие куки
-                        .map(c -> c.name() + "=" + c.value())
-                        .collect(Collectors.joining("; "));
-            }
         }
     }
 
@@ -984,6 +1161,35 @@ public class MailActivity extends AppCompatActivity {
         }
     }
 
+    public static boolean forceReauthenticate(Context context) {
+        try {
+            clearSessionData(MailActivity.context);
+            String[] credentials = getCredentials(MailActivity.context);
+            JSONObject authResult = performMailLogin(credentials[0], credentials[1]);
+            return authResult.getBoolean("success");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String[] getCredentials(Context context) {
+        try {
+            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+            SharedPreferences prefs = EncryptedSharedPreferences.create(
+                    "user_credentials",
+                    masterKeyAlias,
+                    context,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+            return new String[] {
+                    prefs.getString("username", ""),
+                    prefs.getString("password", "")
+            };
+        } catch (Exception e) {
+            return new String[]{"", ""};
+        }
+    }
 
     public static class EmailAdapter extends RecyclerView.Adapter<EmailAdapter.EmailViewHolder> {
         private List<Email> emailList;

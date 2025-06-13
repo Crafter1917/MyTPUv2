@@ -3,6 +3,11 @@
     <item name="weekNavigation" type="id" />
     <item name="time_tag" type="id" />
     <item name="tag_input_name" type="id" />
-    <item name="tag_question_type" type="id" />
     <item name="tag_slot" type="id" />
+    <item name="tag_input_value" type="id"/>
+    <item name="tag_question_html" type="id"/>
+    <item name="tag_input_type" type="id"/>
+    <item name="tag_matching_options" type="id"/>
+
+
 </resources>

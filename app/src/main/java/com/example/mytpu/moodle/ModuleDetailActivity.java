@@ -32,6 +32,7 @@ import android.text.TextUtils;
 import android.text.style.ImageSpan;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -92,7 +93,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
     private JSONObject currentQuiz;
     private JSONArray quizAttempts;
     private int coursemodule;
-    private int cmid;
+    private LinearLayout contentLayout;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -145,6 +146,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         contentView = findViewById(R.id.plainTextContentView);
         contentScrollView = findViewById(R.id.htmlContentTextView);
         progressBar = findViewById(R.id.progressBar);
+        contentLayout = findViewById(R.id.contentLayout);
     }
 
     private void initSecureStorage() {
@@ -177,13 +179,18 @@ public class ModuleDetailActivity extends AppCompatActivity {
         String type = getIntent().getStringExtra("type");
         int courseId = getIntent().getIntExtra("courseid", 0); // Получаем courseId
         String moduleName = getIntent().getStringExtra("name"); // Получаем название модуля
+        Log.d("cmid", "cmid="+cmid);
+        Log.d("instanceId", "instanceId="+instanceId);
+        Log.d("type", "type="+type);
+        Log.d("courseId", "courseId="+courseId);
+        Log.d("moduleName", "moduleName="+moduleName);
         executor.execute(() -> {
             try {
                 if ("page".equals(type)) {
                     loadPageContent(cmid);
                 }else if ("quiz".equals(type)) {
                     int quizId = getIntent().getIntExtra("instanceId", 0); // Берем instanceId для quiz
-                    loadQuizContent(quizId);
+                    loadQuizContent(quizId, cmid);
                 } else {
                     processModuleType(type, cmid, "", instanceId); // Передаем courseId в обработчик
                 }
@@ -218,7 +225,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 loadFolderContent(moduleId);
                 break;
             case "quiz":
-                loadQuizContent(moduleId);
+                loadQuizContent(moduleId,moduleId);
                 break;
             case "scorm":
                 loadScormContent(moduleId);
@@ -455,7 +462,14 @@ public class ModuleDetailActivity extends AppCompatActivity {
 
     private void displayNoContent(String message) {
         runOnUiThread(() -> {
-            contentView.setText(message);
+            contentLayout.removeAllViews();
+            TextView textView = new TextView(this);
+            textView.setText(message);
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            textView.setTextColor(Color.RED);
+            textView.setGravity(Gravity.CENTER);
+
+            contentLayout.addView(textView);
             progressBar.setVisibility(View.GONE);
         });
     }
@@ -540,6 +554,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("DefaultLocale")
     private void displayForumDiscussions(JSONArray discussions) throws JSONException {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < discussions.length(); i++) {
@@ -705,7 +720,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         new Handler(Looper.getMainLooper()).postDelayed(this::finish, 2000);
     }
 
-    private void loadQuizContent(int quizId) throws IOException, JSONException {
+    private void loadQuizContent(int quizId, int cmid) throws IOException, JSONException {
         Log.d(TAG, "Loading quiz with id: " + quizId);
         int courseId = getIntent().getIntExtra("courseid", -1);
 
@@ -726,7 +741,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                     if (quiz.getInt("id") == quizId) {
                         currentQuiz = quiz; // Сохраняем текущий тест
                         loadQuizAttempts(quizId, quiz.getInt("coursemodule"));
-                        checkQuizAccess(quizId, quiz);
+                        checkQuizAccess(quizId, quiz, cmid);
                         break;
                     }
                 }
@@ -736,7 +751,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    private void checkQuizAccess(int quizId, JSONObject quiz) throws JSONException, IOException {
+    private void checkQuizAccess(int quizId, JSONObject quiz,int cmid) throws JSONException, IOException {
         HttpUrl accessUrl = buildApiUrl("mod_quiz_get_quiz_access_information")
                 .addQueryParameter("quizid", String.valueOf(quizId))
                 .build();
@@ -752,7 +767,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 displayQuizPreview(quiz, canAttempt, canPreview, canReview);
 
                 if (canAttempt) {
-                    setupAttemptButton(quizId);
+                    setupAttemptButton(quizId, cmid);
                 }
 
             } catch (JSONException e) {
@@ -841,9 +856,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         parent.addView(tv);
     }
 
-
-
-    private void setupAttemptButton(int quizId) {
+    private void setupAttemptButton(int quizId, int cmid) {
         runOnUiThread(() -> {
             LinearLayout container = findViewById(R.id.contentLayout);
             JSONObject activeAttempt = getActiveAttempt();
@@ -868,7 +881,8 @@ public class ModuleDetailActivity extends AppCompatActivity {
                         );
                         intent.putExtra("attemptId", activeAttempt.getInt("id"));
                         intent.putExtra("layout", layoutStr); // ПЕРЕДАЕМ LAYOUT
-                        intent.putExtra("cmid", coursemodule); // Добавьте эту строку
+                        intent.putExtra("cmid", cmid); // Добавьте эту строку
+                        Log.d("cmid", "cmid="+cmid);
                         startActivity(intent);
                     } catch (JSONException e) {
                         showError("Ошибка запуска: " + e.getMessage());
@@ -876,20 +890,20 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 });
             } else {
                 startButton.setText("Начать попытку");
-                startButton.setOnClickListener(v -> startNewAttempt(quizId));
+                startButton.setOnClickListener(v -> startNewAttempt(quizId, cmid));
             }
 
             container.addView(startButton);
         });
     }
 
-    private void startNewAttempt(int quizId) {
+    private void startNewAttempt(int quizId, int cmid) {
         new AlertDialog.Builder(this)
                 .setTitle("Начать новую попытку?")
                 .setMessage("У вас осталось попыток: " + getRemainingAttempts())
                 .setPositiveButton("Начать", (dialog, which) -> {
                     try {
-                        processNewAttempt(quizId);
+                        processNewAttempt(quizId, cmid);
                     } catch (Exception e) {
                         Log.e(TAG, "Error starting attempt", e);
                         showError("Ошибка запуска попытки");
@@ -898,7 +912,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 .setNegativeButton("Отмена", null)
                 .show();
     }
-
 
     private int getRemainingAttempts() {
         try {
@@ -927,8 +940,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         return null;
     }
 
-
-    private void processNewAttempt(int quizId) throws JSONException, IOException {
+    private void processNewAttempt(int quizId, int cmid) throws JSONException, IOException {
         HttpUrl startUrl = buildApiUrl("mod_quiz_start_attempt")
                 .addQueryParameter("quizid", String.valueOf(quizId))
                 .build();
@@ -942,7 +954,8 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 Intent intent = new Intent(ModuleDetailActivity.this, QuizAttemptActivity.class);
                 intent.putExtra("attemptId", attempt.getInt("id"));
                 intent.putExtra("layout", layoutStr); // Передаём как строку
-                intent.putExtra("cmid", coursemodule);
+                intent.putExtra("cmid", cmid);
+                Log.d("cmid", "cmid="+cmid);
                 startActivity(intent);
             } catch (JSONException e) {
                 if (json.has("errorcode") && json.getString("errorcode").equals("attemptstillinprogress")) {
@@ -971,8 +984,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
             }
         });
     }
-
-
 
     private void loadAttemptQuestions(int attemptId) throws JSONException, IOException {
         HttpUrl questionsUrl = buildApiUrl("mod_quiz_get_attempt_data")
@@ -1059,7 +1070,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         }
         return options;
     }
-
 
     @Override
     protected void onDestroy() {

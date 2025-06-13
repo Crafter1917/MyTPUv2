@@ -35,6 +35,8 @@ import android.view.ViewGroup;
 
 import androidx.fragment.app.Fragment;
 
+import com.example.mytpu.schedule.ScheduleActivity;
+
 public class MainScreen extends Fragment {
     private static final String LOGIN_API_URL = "https://stud.lms.tpu.ru/login/token.php";
     private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
@@ -57,7 +59,6 @@ public class MainScreen extends Fragment {
             throw new RuntimeException("Must be attached to MainActivity");
         }
     }
-
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {

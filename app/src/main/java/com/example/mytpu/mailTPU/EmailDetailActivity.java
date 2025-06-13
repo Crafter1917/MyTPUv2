@@ -110,6 +110,7 @@ public class EmailDetailActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         RoundcubeAPI.clearCache(this);
         setContentView(R.layout.activity_email_detail);
         context = this;
@@ -333,6 +334,8 @@ public class EmailDetailActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    
+
     private void configureWebView(String html) {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -376,6 +379,10 @@ public class EmailDetailActivity extends AppCompatActivity {
     private void showHtml(String html) {
         configureWebView(html);
         runOnUiThread(() -> {
+            if (TextUtils.isEmpty(html)) {
+                webView.loadData("<h3>Ошибка загрузки письма</h3>", "text/html", "UTF-8");
+                return;
+            }
             TextView attachmentsLabel = findViewById(R.id.attachmentsLabel);
             attachmentsLabel.setVisibility(attachments.isEmpty() ? View.GONE : View.VISIBLE);
 

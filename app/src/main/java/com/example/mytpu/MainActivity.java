@@ -1,17 +1,15 @@
 package com.example.mytpu;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
+import static android.content.ContentValues.TAG;
+
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -22,7 +20,6 @@ import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
@@ -47,11 +44,27 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
         portalAuthHelper = new PortalAuthHelper(this);
+        fragmentContainer = findViewById(R.id.content_frame);
 
         initSharedPreferences();
         setupToolbar();
         setupNavigation();
         checkAuthState();
+    }
+    private void showTodaySchedule() {
+        unlockDrawer();
+        updateNavHeaderUsername();
+        getSupportFragmentManager().beginTransaction()
+                .replace(R.id.content_frame, new TodayScheduleFragment())
+                .commit();
+
+    }
+    private void updateMainContent() {
+        unlockDrawer();
+        updateNavigationMenu();
+        updateNavHeaderUsername();
+        fragmentContainer.setVisibility(View.VISIBLE);
+        showTodaySchedule(); // Добавлен вызов расписания
     }
 
     private void initSharedPreferences() {
@@ -95,13 +108,15 @@ public class MainActivity extends AppCompatActivity
     private void checkAuthState() {
         fragmentContainer = findViewById(R.id.content_frame);
 
+        Log.d(TAG, "checkAuthState!");
         if (isLoggedIn()) {
-            showMainContent();
-            fragmentContainer.setVisibility(View.GONE); // Скрыть контейнер фрагментов
+            updateMainContent(); // Используем обновленный метод
+            Log.d(TAG, "isLoggedIn!");
         } else {
-            fragmentContainer.setVisibility(View.VISIBLE); // Показать контейнер
+            fragmentContainer.setVisibility(View.VISIBLE);
             showLoginFragment();
             lockDrawer();
+            Log.d(TAG, "isNotLoggedIn!");
         }
     }
 
@@ -166,8 +181,8 @@ public class MainActivity extends AppCompatActivity
             startActivity(new Intent(this, ScheduleActivity.class));
         } else if (id == R.id.nav_mail) {
             startActivity(new Intent(this, MailActivity.class));
-        } else if (id == R.id.nav_portal) {
-        portalAuthHelper.authenticateAndOpenPortal();
+        //} else if (id == R.id.nav_portal) {
+        //portalAuthHelper.authenticateAndOpenPortal();
         } else if (id == R.id.nav_settings) {
         startActivity(new Intent(this, SettingsActivity.class));
         }

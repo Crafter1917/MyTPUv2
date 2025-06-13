@@ -8,8 +8,16 @@
         <item name="android:minWidth">0dp</item>
         <item name="android:minHeight">0dp</item>
         <item name="android:padding">8dp</item>
-
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 
     <style name="Theme.MyTPU" parent="Base.Theme.MyTPU" />
+    <style name="TimePickerStyle" parent="Theme.AppCompat.Light">
+        <item name="android:timePickerMode">clock</item>
+        <item name="android:numbersTextColor">?android:attr/textColorPrimary</item>
+        <item name="android:numbersSelectorColor">@color/primaryColor</item>
+        <item name="android:numbersBackgroundColor">@android:color/transparent</item>
+    </style>
 </resources>

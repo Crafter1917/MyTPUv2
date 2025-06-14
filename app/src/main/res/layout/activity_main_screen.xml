@@ -23,13 +23,14 @@
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
 
-
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
+            <!-- Добавлены ID для элементов -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/progress_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="16dp"
@@ -47,6 +48,7 @@
 
                     <!-- Заголовок -->
                     <TextView
+                        android:id="@+id/progress_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Ваш прогресс"
@@ -55,6 +57,7 @@
 
                     <!-- Основной текст -->
                     <TextView
+                        android:id="@+id/progress_text"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
@@ -89,17 +92,15 @@
                             android:background="@drawable/progress_dot" />
 
                         <TextView
+                            android:id="@+id/stats_text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Лучше чем 33% студентов"
                             android:textColor="@color/textSecondary"
                             android:textSize="14sp" />
                     </LinearLayout>
-
                 </LinearLayout>
-
             </com.google.android.material.card.MaterialCardView>
-
         </FrameLayout>
     </LinearLayout>
 
@@ -118,7 +119,5 @@
             android:elevation="16dp"
             app:headerLayout="@layout/nav_header"
             app:menu="@menu/nav_dashboard"/>
-
     </LinearLayout>
-
 </androidx.drawerlayout.widget.DrawerLayout>

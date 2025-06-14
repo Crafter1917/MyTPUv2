@@ -1,115 +1,117 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mainScrollView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:orientation="vertical">
+    android:fillViewport="true"
+    android:padding="16dp">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:elevation="4dp"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:padding="16dp">
+        <!-- Добавленный Toolbar -->
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:elevation="4dp"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:title="Настройки цветов"/>
 
+        <!-- Переключатель темы -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:paddingVertical="16dp"
+            android:focusable="true"
+            android:clickable="true"
+            android:contentDescription="Переключатель темной темы">
 
-            <!-- Theme Section -->
             <TextView
-                android:layout_width="match_parent"
+                android:id="@+id/themeLabel"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:tag="color:textHighlight"
-                android:text="Режим редактирования"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp"/>
+                android:layout_weight="1"
+                android:text="Темная тема"
+                android:textSize="16sp"
+                android:labelFor="@+id/themeSwitch"/>
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/themeSwitch"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="8dp">
-
-                <Switch
-                    android:id="@+id/themeSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Редактировать ночную тему"
-                    tools:ignore="UseSwitchCompatOrMaterialXml" />
-            </LinearLayout>
-
-            <!-- Day Theme Colors -->
-            <LinearLayout
-                android:id="@+id/dayColorsContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="visible">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Дневная тема"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="16dp"/>
-
-                <!-- Color items will be added programmatically -->
-            </LinearLayout>
-
-            <!-- Night Theme Colors -->
-            <LinearLayout
-                android:id="@+id/nightColorsContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Ночная тема"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:layout_marginTop="16dp"/>
-
-                <!-- Color items will be added programmatically -->
-            </LinearLayout>
-
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent">
-
-                <Button
-                    android:id="@+id/saveButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Сохранить настройки"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintStart_toStartOf="parent" />
-
-                <Button
-                    android:id="@+id/resetButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Сбросить настройки"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toEndOf="@+id/saveButton" />
-            </androidx.constraintlayout.widget.ConstraintLayout>
-
+                android:contentDescription="Темная тема"
+                android:importantForAccessibility="yes"/>
         </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+
+        <!-- Дневные цвета -->
+        <TextView
+            android:id="@+id/dayColorsLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Дневные цвета"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:paddingTop="16dp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/dayColorsRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"/>
+
+        <!-- Ночные цвета -->
+        <TextView
+            android:id="@+id/nightColorsLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ночные цвета"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:paddingTop="16dp"
+            android:visibility="gone"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/nightColorsRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"/>
+
+        <!-- Кнопки -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingTop="24dp">
+
+            <Button
+                android:id="@+id/saveButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Сохранить"
+                android:contentDescription="Сохранить настройки цветов"
+                android:importantForAccessibility="yes"
+                android:backgroundTint="@color/colorAccent"/>
+
+            <Button
+                android:id="@+id/resetButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Сброс"
+                android:contentDescription="Сбросить настройки цветов"
+                android:importantForAccessibility="yes"
+                android:backgroundTint="@color/grey_300"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

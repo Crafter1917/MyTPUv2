@@ -27,9 +27,11 @@ import com.example.mytpu.mailTPU.MailActivity;
 import com.example.mytpu.moodle.DashboardActivity;
 import com.example.mytpu.portalTPU.PortalAuthHelper;
 import com.example.mytpu.schedule.ScheduleActivity;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.navigation.NavigationView;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 
-public class MainActivity extends AppCompatActivity
+public class MainActivity extends BaseActivity
         implements NavigationView.OnNavigationItemSelectedListener {
 
     private DrawerLayout drawerLayout;
@@ -37,12 +39,19 @@ public class MainActivity extends AppCompatActivity
     private FrameLayout fragmentContainer;
     private SharedPreferences sharedPreferences;
     private PortalAuthHelper portalAuthHelper;
-
+    private boolean isNightMode;
+    private ColorManager colorManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Получаем настройки темы ДО setContentView
+        SharedPreferences prefs = getSharedPreferences("AppColors", MODE_PRIVATE);
+        isNightMode = prefs.getBoolean("isNightMode", false);
+        colorManager = new ColorManager(this, isNightMode);
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
+
         portalAuthHelper = new PortalAuthHelper(this);
         fragmentContainer = findViewById(R.id.content_frame);
 
@@ -50,21 +59,53 @@ public class MainActivity extends AppCompatActivity
         setupToolbar();
         setupNavigation();
         checkAuthState();
+
+        // Применяем кастомные цвета
+        applyCustomColors();
     }
+
+    @Override
+    protected void applyCustomColors() {
+        // Применяем цвета к элементам, которые всегда есть в MainActivity
+        NavigationView navView = findViewById(R.id.nav_view);
+        if (navView != null) {
+            navView.setBackgroundColor(colorManager.getColor("cardBackground"));
+
+            // Обновляем цвет текста в хидере
+            View headerView = navView.getHeaderView(0);
+            if (headerView != null) {
+                TextView emailTextView = headerView.findViewById(R.id.textViewEmail);
+                emailTextView.setTextColor(colorManager.getColor("textPrimary"));
+            }
+        }
+
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        if (toolbar != null) {
+            toolbar.setBackgroundColor(colorManager.getColor("primaryColor"));
+        }
+
+        // Если есть карточка прогресса, применяем её цвета
+        MaterialCardView card = findViewById(R.id.progress_card);
+        if (card != null) {
+            card.setCardBackgroundColor(colorManager.getColor("card_background"));
+            card.setStrokeColor(colorManager.getColor("border_color"));
+        }
+    }
+
     private void showTodaySchedule() {
         unlockDrawer();
         updateNavHeaderUsername();
         getSupportFragmentManager().beginTransaction()
                 .replace(R.id.content_frame, new TodayScheduleFragment())
                 .commit();
-
     }
+
     private void updateMainContent() {
         unlockDrawer();
         updateNavigationMenu();
         updateNavHeaderUsername();
         fragmentContainer.setVisibility(View.VISIBLE);
-        showTodaySchedule(); // Добавлен вызов расписания
+        showTodaySchedule();
     }
 
     private void initSharedPreferences() {
@@ -88,6 +129,7 @@ public class MainActivity extends AppCompatActivity
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
     }
+
     private void setupNavigation() {
         drawerLayout = findViewById(R.id.drawer_layout);
         toggle = new ActionBarDrawerToggle(
@@ -110,7 +152,7 @@ public class MainActivity extends AppCompatActivity
 
         Log.d(TAG, "checkAuthState!");
         if (isLoggedIn()) {
-            updateMainContent(); // Используем обновленный метод
+            updateMainContent();
             Log.d(TAG, "isLoggedIn!");
         } else {
             fragmentContainer.setVisibility(View.VISIBLE);
@@ -125,27 +167,21 @@ public class MainActivity extends AppCompatActivity
                 sharedPreferences.contains("token");
     }
 
-    private void showMainContent() {
-        unlockDrawer();
-        updateNavigationMenu();
-        updateNavHeaderUsername(); // Добавьте этот вызов
-        fragmentContainer.setVisibility(View.GONE);
-    }
-
     private void updateNavHeaderUsername() {
         NavigationView navigationView = findViewById(R.id.nav_view);
         if (navigationView != null) {
             View headerView = navigationView.getHeaderView(0);
             if (headerView != null) {
                 TextView emailTextView = headerView.findViewById(R.id.textViewEmail);
-                String username = sharedPreferences.getString("username", "user@tpu.ru")+"@tpu.ru";
+                String username = sharedPreferences.getString("username", "user@tpu.ru") + "@tpu.ru";
                 emailTextView.setText(username);
             }
         }
     }
+
     private void showLoginFragment() {
         fragmentContainer.setVisibility(View.VISIBLE);
-        replaceFragment(new MainScreen(), false); // Уберите добавление в back stack
+        replaceFragment(new MainScreen(), false);
         lockDrawer();
         updateNavigationMenu();
     }
@@ -181,18 +217,16 @@ public class MainActivity extends AppCompatActivity
             startActivity(new Intent(this, ScheduleActivity.class));
         } else if (id == R.id.nav_mail) {
             startActivity(new Intent(this, MailActivity.class));
-        //} else if (id == R.id.nav_portal) {
-        //portalAuthHelper.authenticateAndOpenPortal();
         } else if (id == R.id.nav_settings) {
-        startActivity(new Intent(this, SettingsActivity.class));
-        }
-        else if (id == R.id.nav_logout) {
+            startActivity(new Intent(this, SettingsActivity.class));
+        } else if (id == R.id.nav_logout) {
             logout();
         }
 
         drawerLayout.closeDrawer(GravityCompat.START);
         return true;
     }
+
     public void updateNavigationMenu() {
         NavigationView navigationView = findViewById(R.id.nav_view);
         Menu menu = navigationView.getMenu();
@@ -200,15 +234,15 @@ public class MainActivity extends AppCompatActivity
 
         menu.findItem(R.id.nav_logout).setVisible(isLoggedIn);
     }
+
     private void logout() {
         if (sharedPreferences != null) {
             sharedPreferences.edit().clear().apply();
         }
-        resetNavHeader(); // Добавьте этот вызов
+        resetNavHeader();
         checkAuthState();
     }
 
-    // Новый метод для сброса email
     private void resetNavHeader() {
         NavigationView navigationView = findViewById(R.id.nav_view);
         if (navigationView != null) {

@@ -2,157 +2,255 @@ package com.example.mytpu;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
+import android.content.res.Resources;
 import android.os.Bundle;
-import android.view.LayoutInflater;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.Switch;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
+import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import yuku.ambilwarna.AmbilWarnaDialog;
 
 public class SettingsActivity extends AppCompatActivity {
-    private Map<String, Integer> dayColors = new HashMap<>();
-    private Map<String, Integer> nightColors = new HashMap<>();
+    private final Map<String, Integer> dayColors = Collections.synchronizedMap(new HashMap<>());
+    private final Map<String, Integer> nightColors = Collections.synchronizedMap(new HashMap<>());
     private boolean isNightMode = false;
+    private SwitchCompat themeSwitch;
+    private RecyclerView dayRecyclerView;
+    private RecyclerView nightRecyclerView;
+    private ColorAdapter dayAdapter;
+    private ColorAdapter nightAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
+        // Инициализация Toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
         }
 
         initDefaultColors();
 
-        Switch themeSwitch = findViewById(R.id.themeSwitch);
-        LinearLayout dayContainer = findViewById(R.id.dayColorsContainer);
-        LinearLayout nightContainer = findViewById(R.id.nightColorsContainer);
+        // Инициализация элементов
+        themeSwitch = findViewById(R.id.themeSwitch);
+        dayRecyclerView = findViewById(R.id.dayColorsRecyclerView);
+        nightRecyclerView = findViewById(R.id.nightColorsRecyclerView);
         Button saveButton = findViewById(R.id.saveButton);
         Button resetButton = findViewById(R.id.resetButton);
 
-        populateColorViews(dayContainer, dayColors);
-        populateColorViews(nightContainer, nightColors);
+        // Настройка RecyclerView
+        dayRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        nightRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        dayAdapter = new ColorAdapter(dayColors, colorName ->
+                showColorPicker(colorName, dayColors));
+        nightAdapter = new ColorAdapter(nightColors, colorName ->
+                showColorPicker(colorName, nightColors));
+
+        dayRecyclerView.setAdapter(dayAdapter);
+        nightRecyclerView.setAdapter(nightAdapter);
+
+        // Восстановление состояния темы
+        SharedPreferences prefs = getSharedPreferences("AppColors", MODE_PRIVATE);
+        isNightMode = prefs.getBoolean("isNightMode", false);
+        themeSwitch.setChecked(isNightMode);
+
+        // Обновление видимости
+        updateThemeVisibility();
+
+        // Слушатель переключателя темы
         themeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             isNightMode = isChecked;
-            dayContainer.setVisibility(isChecked ? View.GONE : View.VISIBLE);
-            nightContainer.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+            updateThemeVisibility();
         });
 
+        // Кнопки
         saveButton.setOnClickListener(v -> saveColors());
         resetButton.setOnClickListener(v -> showResetConfirmationDialog());
+    }
+
+    private void updateThemeVisibility() {
+        runOnUiThread(() -> {
+            if (isNightMode) {
+                dayRecyclerView.setVisibility(View.GONE);
+                findViewById(R.id.dayColorsLabel).setVisibility(View.GONE);
+                nightRecyclerView.setVisibility(View.VISIBLE);
+                findViewById(R.id.nightColorsLabel).setVisibility(View.VISIBLE);
+            } else {
+                dayRecyclerView.setVisibility(View.VISIBLE);
+                findViewById(R.id.dayColorsLabel).setVisibility(View.VISIBLE);
+                nightRecyclerView.setVisibility(View.GONE);
+                findViewById(R.id.nightColorsLabel).setVisibility(View.GONE);
+            }
+        });
     }
 
     private void initDefaultColors() {
         SharedPreferences preferences = getSharedPreferences("AppColors", MODE_PRIVATE);
 
-        int[] colorIds = {
-                R.color.purple_500, R.color.purple_700, R.color.teal_200,
-                R.color.white, R.color.black, R.color.colorAccent,
-                R.color.cardBackground, R.color.primaryColor, R.color.lesson_card_background,
-                R.color.textPrimary, R.color.primaryDarkColor, R.color.textSecondary,
-                R.color.colorPrimary, R.color.linkColor, R.color.textHighlight,
-                R.color.dark_background, R.color.grey_300, R.color.card_background,
-                R.color.active_day_background, R.color.border_color, R.color.link_color
-        };
+        // Получаем все цвета из ресурсов по имени
+        Map<String, Integer> allColors = new HashMap<>();
+        Field[] fields = R.color.class.getDeclaredFields();
+        for (Field field : fields) {
+            try {
+                String colorName = field.getName();
+                int colorId = field.getInt(null);
+                allColors.put(colorName, ContextCompat.getColor(this, colorId));
+            } catch (Exception e) {
+                Log.e("ColorDebug", "Error loading color: " + field.getName(), e);
+            }
+        }
 
-        for (int colorId : colorIds) {
-            String colorName = getResources().getResourceEntryName(colorId);
-            int defaultColor = ContextCompat.getColor(this, colorId);
+        // Добавляем цвета, которые могут отсутствовать в R.color
+        addExtraColors(allColors);
+
+        // Загружаем настройки
+        for (Map.Entry<String, Integer> entry : allColors.entrySet()) {
+            String colorName = entry.getKey();
+            int defaultColor = entry.getValue();
 
             dayColors.put(colorName, preferences.getInt("DAY_" + colorName, defaultColor));
             nightColors.put(colorName, preferences.getInt("NIGHT_" + colorName, defaultColor));
         }
     }
 
-    private void populateColorViews(LinearLayout container, Map<String, Integer> colors) {
-        LayoutInflater inflater = LayoutInflater.from(this);
+    private void addExtraColors(Map<String, Integer> allColors) {
+        // Системные цвета
+        int[] systemColors = {
+                android.R.color.background_light,
+                android.R.color.background_dark,
+                android.R.color.primary_text_light,
+                android.R.color.primary_text_dark,
+                android.R.color.secondary_text_light,
+                android.R.color.secondary_text_dark
+        };
 
-        colors.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEachOrdered(entry -> {
-                    View colorItem = inflater.inflate(R.layout.color_item, container, false);
-                    TextView colorName = colorItem.findViewById(R.id.colorName);
-                    View colorPreview = colorItem.findViewById(R.id.colorPreview);
+        for (int colorId : systemColors) {
+            try {
+                String resourceName = getResources().getResourceEntryName(colorId);
+                int colorValue = ContextCompat.getColor(this, colorId);
+                allColors.put(resourceName, colorValue);
+            } catch (Exception e) {
+                Log.e("ColorDebug", "Error adding system color: " + colorId, e);
+            }
+        }
 
-                    colorName.setText(entry.getKey());
-                    colorPreview.setBackgroundColor(entry.getValue());
+        // Атрибуты темы (получаем по именам)
+        String[] themeColorAttrs = {
+                "colorPrimary",
+                "colorPrimaryDark",
+                "colorAccent",
+                "colorControlNormal",
+                "colorControlActivated",
+                "colorControlHighlight"
+        };
 
-                    colorPreview.setOnClickListener(v -> showColorPicker(entry.getKey(), colors));
-                    container.addView(colorItem);
-                });
+        TypedValue typedValue = new TypedValue();
+        Resources res = getResources();
+
+        for (String attrName : themeColorAttrs) {
+            try {
+                // Получаем ID атрибута по имени
+                int attrId = res.getIdentifier(attrName, "attr", getPackageName());
+
+                if (attrId == 0) {
+                    Log.e("ColorDebug", "Attribute not found: " + attrName);
+                    continue;
+                }
+
+                // Разрешаем атрибут в цвет
+                getTheme().resolveAttribute(attrId, typedValue, true);
+
+                if (typedValue.resourceId != 0) {
+                    String resourceName = res.getResourceEntryName(typedValue.resourceId);
+                    int colorValue = ContextCompat.getColor(this, typedValue.resourceId);
+                    allColors.put(resourceName, colorValue);
+                } else if (typedValue.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
+                        typedValue.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+                    // Используем имя атрибута, если нет имени ресурса
+                    allColors.put(attrName, typedValue.data);
+                } else {
+                    Log.e("ColorDebug", "Attribute is not a color: " + attrName);
+                }
+            } catch (Exception e) {
+                Log.e("ColorDebug", "Error adding theme color: " + attrName, e);
+            }
+        }
     }
 
     private void showColorPicker(String colorName, Map<String, Integer> colors) {
+        if (!colors.containsKey(colorName)) {
+            Log.e("ColorPicker", "Color not found: " + colorName);
+            return;
+        }
+
         int initialColor = colors.get(colorName);
         new AmbilWarnaDialog(this, initialColor, new AmbilWarnaDialog.OnAmbilWarnaListener() {
             @Override
             public void onOk(AmbilWarnaDialog dialog, int color) {
-                colors.put(colorName, color);
-                updateColorPreviews();
+                // Обновляем в основном потоке
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    colors.put(colorName, color);
+
+                    if (colors == dayColors) {
+                        dayAdapter.updateColors(dayColors);
+                    } else {
+                        nightAdapter.updateColors(nightColors);
+                    }
+                });
             }
 
             @Override
-            public void onCancel(AmbilWarnaDialog dialog) {
-                Toast.makeText(SettingsActivity.this, "Выбор цвета отменен", Toast.LENGTH_SHORT).show();
-            }
+            public void onCancel(AmbilWarnaDialog dialog) {}
         }).show();
-    }
-
-    private void updateColorPreviews() {
-        LinearLayout dayContainer = findViewById(R.id.dayColorsContainer);
-        LinearLayout nightContainer = findViewById(R.id.nightColorsContainer);
-
-        updateContainerColors(dayContainer, dayColors);
-        updateContainerColors(nightContainer, nightColors);
-    }
-
-    private void updateContainerColors(LinearLayout container, Map<String, Integer> colors) {
-        for (int i = 0; i < container.getChildCount(); i++) {
-            View child = container.getChildAt(i);
-            if (child instanceof ViewGroup) {
-                ViewGroup group = (ViewGroup) child;
-                TextView nameView = group.findViewById(R.id.colorName);
-                View preview = group.findViewById(R.id.colorPreview);
-                String colorName = nameView.getText().toString();
-                preview.setBackgroundColor(colors.get(colorName));
-            }
-        }
     }
 
     private void saveColors() {
         SharedPreferences preferences = getSharedPreferences("AppColors", MODE_PRIVATE);
         SharedPreferences.Editor editor = preferences.edit();
 
-        for (Map.Entry<String, Integer> entry : dayColors.entrySet()) {
+        editor.putBoolean("isNightMode", isNightMode);
+
+        // Синхронизированное копирование
+        Map<String, Integer> safeDayColors = new HashMap<>(dayColors);
+        Map<String, Integer> safeNightColors = new HashMap<>(nightColors);
+
+        for (Map.Entry<String, Integer> entry : safeDayColors.entrySet()) {
             editor.putInt("DAY_" + entry.getKey(), entry.getValue());
         }
 
-        for (Map.Entry<String, Integer> entry : nightColors.entrySet()) {
+        for (Map.Entry<String, Integer> entry : safeNightColors.entrySet()) {
             editor.putInt("NIGHT_" + entry.getKey(), entry.getValue());
         }
 
         editor.apply();
         Toast.makeText(this, "Настройки сохранены", Toast.LENGTH_SHORT).show();
 
-        // Отправляем широковещательное сообщение об обновлении цветов
+        // Сбрасываем кэш в ColorManager
+        ColorManager.getInstance(this, isNightMode).clearCache();
+
+        // Отправляем широковещательное сообщение
         sendBroadcast(new Intent("COLORS_UPDATED"));
     }
 
@@ -168,9 +266,21 @@ public class SettingsActivity extends AppCompatActivity {
     private void resetColorsToDefault() {
         SharedPreferences preferences = getSharedPreferences("AppColors", MODE_PRIVATE);
         preferences.edit().clear().apply();
+
+        isNightMode = false;
+        themeSwitch.setChecked(false);
+        updateThemeVisibility();
+
+        // Перезагружаем цвета по умолчанию
         initDefaultColors();
-        updateColorPreviews();
-        saveColors(); // Сохраняем дефолтные значения
+
+        // Обновляем адаптеры в UI-потоке
+        new Handler(Looper.getMainLooper()).post(() -> {
+            dayAdapter.updateColors(dayColors);
+            nightAdapter.updateColors(nightColors);
+        });
+
+        saveColors();
         Toast.makeText(this, "Настройки сброшены", Toast.LENGTH_SHORT).show();
     }
 

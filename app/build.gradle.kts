@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.mytpu"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.01"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,6 +35,10 @@ android {
 
 dependencies {
     // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp
+    implementation ("androidx.appcompat:appcompat:1.6.1")
+    implementation ("com.google.android.material:material:1.9.0")
+    implementation ("androidx.recyclerview:recyclerview:1.3.1")
+    implementation ("com.github.yukuku:ambilwarna:2.0.1")
     implementation ("com.google.android.gms:play-services-auth:20.7.0")
     implementation ("androidx.preference:preference:1.2.1")
     implementation ("com.github.yukuku:ambilwarna:2.0.1")

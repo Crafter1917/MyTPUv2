@@ -98,7 +98,8 @@
         <activity android:name=".moodle.DashboardActivity" />
         <activity
             android:name=".SettingsActivity"
-            android:label="Настройки" />
+            android:label="Настройки"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
         <activity
             android:name=".schedule.ScheduleActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

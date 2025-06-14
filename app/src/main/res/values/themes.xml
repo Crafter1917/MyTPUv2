@@ -12,7 +12,17 @@
         <item name="android:windowShowWallpaper">true</item>
         <item name="android:windowBackground">@android:color/black</item>
     </style>
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Цвета по умолчанию -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryDark">@color/purple_700</item>
+        <item name="colorAccent">@color/teal_200</item>
+        <item name="colorControlNormal">@color/grey_500</item>
+        <item name="colorControlActivated">@color/teal_200</item>
+        <item name="colorControlHighlight">@color/teal_100</item>
 
+        <!-- Добавьте другие атрибуты по необходимости -->
+    </style>
     <style name="Theme.MyTPU" parent="Base.Theme.MyTPU" />
     <style name="TimePickerStyle" parent="Theme.AppCompat.Light">
         <item name="android:timePickerMode">clock</item>

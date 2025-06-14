@@ -23,4 +23,6 @@
     <color name="link_color">#82B1FF</color>
     <color name="light_gray">#1A1A1A</color>
     <color name="backroundalarm">#1A1A1A</color>
+    <color name="grey_500">#9E9E9E</color>
+    <color name="teal_100">#B2DFDB</color>
 </resources>

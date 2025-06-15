@@ -3,48 +3,60 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/dark_background">
+    android:background="?android:attr/colorBackground">
 
     <!-- Заголовок "Расписание на сегодня" -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Расписание на сегодня"
-        android:textSize="24sp"
-        android:textStyle="bold"
         android:gravity="center"
-        android:padding="16dp"
-        android:background="@color/primary_color"
-        android:textColor="@color/text_primary"/>
+        android:padding="4dp"
+        android:text="Расписание на сегодня"
+        android:textColor="@color/text_primary"
+        android:textSize="24sp"
+        android:textStyle="bold" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="8dp"
-        android:background="@color/dark_background">
+        android:padding="8dp">
 
         <ProgressBar
             android:id="@+id/progressBar"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:visibility="gone"
-            android:indeterminateTint="@color/progress_indicator_color"/>
+            android:visibility="gone"/>
 
         <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/dark_background">
+            android:layout_height="match_parent">
 
             <LinearLayout
-                android:id="@+id/scheduleContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp"
-                android:background="@color/card_background"/>
+
+                android:padding="4dp">
+
+                <!-- Контейнер для карточек расписания -->
+                <LinearLayout
+                    android:id="@+id/scheduleContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="4dp"
+                    android:orientation="vertical"/>
+
+                <!-- Контейнер для фрагмента прогресса курсов -->
+                <FrameLayout
+                    android:id="@+id/progressContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"/>
+
+            </LinearLayout>
         </ScrollView>
     </LinearLayout>
 </LinearLayout>

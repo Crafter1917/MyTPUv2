@@ -37,6 +37,7 @@
         android:hardwareAccelerated="true"
         tools:targetApi="31">
         <profileable android:shell="true" />
+
         <receiver
             android:name=".mailTPU.MailReceiver"
             android:enabled="true"
@@ -52,14 +53,14 @@
             tools:ignore="ForegroundServicePermission" />
         <activity
             android:name=".schedule.FullscreenAlarmActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
             android:showOnLockScreen="true"
-            android:theme="@style/Theme.MyTPU"
-            android:turnScreenOn="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-            </intent-filter>
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:exported="true"
+            android:theme="@style/Theme.MyTPU">
+            <!-- УДАЛИТЬ intent-filter -->
         </activity>
         <activity
             android:name=".moodle.QuizAttemptActivity"
@@ -93,8 +94,7 @@
         <activity android:name=".moodle.DashboardActivity" />
         <activity
             android:name=".SettingsActivity"
-            android:label="Настройки"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+            android:label="Настройки" />
         <activity
             android:name=".schedule.ScheduleActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

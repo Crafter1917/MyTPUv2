@@ -43,8 +43,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
+
 import android.app.PendingIntent;
 import android.content.Context;
 import android.os.Build;
@@ -147,7 +146,6 @@ public class DashboardActivity extends AppCompatActivity
 
         executor = Executors.newSingleThreadExecutor();
         Log.d("Token", "Token retrieved: " + token);
-        createNotificationChannel();
 
 
         if (token != null) {
@@ -160,145 +158,13 @@ public class DashboardActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
-        startNotificationPolling();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        stopNotificationPolling();
-    }
-    private void startNotificationPolling() {
-        notificationHandler = new Handler();
-        notificationHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                fetchNotifications();
-                notificationHandler.postDelayed(this, POLL_INTERVAL);
-            }
-        }, POLL_INTERVAL);
     }
 
-    private void stopNotificationPolling() {
-        if (notificationHandler != null) {
-            notificationHandler.removeCallbacksAndMessages(null);
-        }
-    }
-
-    private void fetchNotifications() {
-        executor.execute(() -> {
-            try {
-                int userId = sharedPreferences.getInt("userid", 0);
-                if (userId == 0) {
-                    JSONObject siteInfo = getSiteInfo();
-                    userId = siteInfo.getInt("userid");
-                    sharedPreferences.edit().putInt("userid", userId).apply();
-                }
-
-                List<Notification> notifications = getNotifications(userId);
-                processNotifications(notifications);
-            } catch (Exception e) {
-                Log.e(TAG, "Error fetching notifications", e);
-            }
-        });
-    }
-    private List<Notification> getNotifications(int userId) throws IOException, JSONException {
-        List<Notification> notifications = new ArrayList<>();
-
-        HttpUrl url = HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
-                .addQueryParameter("wstoken", token)
-                .addQueryParameter("wsfunction", "core_message_get_messages")
-                .addQueryParameter("useridto", String.valueOf(userId))
-                .addQueryParameter("read", "0") // Только непрочитанные
-                .addQueryParameter("limit", "20")
-                .addQueryParameter("moodlewsrestformat", "json")
-                .build();
-
-        Request request = new Request.Builder().url(url).build();
-
-        try (Response response = client.newCall(request).execute()) {
-            String responseBody = response.body().string();
-            JSONArray messages = new JSONArray(responseBody);
-
-            for (int i = 0; i < messages.length(); i++) {
-                JSONObject message = messages.getJSONObject(i);
-                int id = message.getInt("id");
-                String subject = message.optString("subject", "");
-                String text = message.optString("text", "");
-                long timecreated = message.getLong("timecreated");
-                boolean read = message.getBoolean("read");
-                int useridfrom = message.getInt("useridfrom");
-                String fullname = message.optString("userfromfullname", "");
-                String smallmessage = message.optString("smallmessage", "");
-
-                notifications.add(new Notification(id, subject, text, timecreated,
-                        read, useridfrom, fullname, smallmessage));
-            }
-        }
-        return notifications;
-    }
-
-    // DashboardActivity.java
-    private void processNotifications(List<Notification> notifications) {
-        for (Notification notification : notifications) {
-            if (!shownNotificationIds.contains(notification.getId())) {
-                shownNotificationIds.add(notification.getId());
-
-                // Показ в фоновом потоке
-                executor.execute(() -> showNotification(notification));
-            }
-        }
-    }
-
-    private void showNotification(Notification notification) {
-        createNotificationChannel();
-        Intent intent = new Intent(this, DashboardActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(notification.getSubject())
-                .setContentText(notification.getSmallmessage())
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true);
-
-        NotificationManager notificationManager =
-                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        executor.execute(() -> {
-            try {
-                MoodleApiHelper.markNotificationRead(token, notification.getId());
-            } catch (IOException e) {
-                Log.e(TAG, "Error marking notification read", e);
-            }
-        });
-
-        notificationManager.notify(notification.getId(), builder.build());
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Moodle Notifications";
-            String description = "Channel for Moodle notifications";
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-
-            // Проверка создания канала
-            NotificationChannel createdChannel = notificationManager.getNotificationChannel(CHANNEL_ID);
-            if (createdChannel != null) {
-                Log.d(TAG, "Notification channel created successfully");
-            } else {
-                Log.e(TAG, "Failed to create notification channel");
-            }
-        }
-    }
 
     private void loadUserData() {
         executor.execute(() -> {
@@ -497,7 +363,14 @@ public class DashboardActivity extends AppCompatActivity
             String name = course.getString("fullname");
             int id = course.getInt("id");
             String url = "https://stud.lms.tpu.ru/course/view.php?id=" + id;
-            courses.add(new Course(name, url, id));
+
+            // Извлекаем прогресс (если есть)
+            int progress = 0;
+            if (course.has("progress")) {
+                progress = course.getInt("progress");
+            }
+
+            courses.add(new Course(name, url, id, progress)); // Передаем прогресс
         }
         return courses;
     }
@@ -636,14 +509,16 @@ public class DashboardActivity extends AppCompatActivity
         private final String name;
         private final String url;
         private final int id;
-
-        public Course(String name, String url, int id) {
+        private int progress; // Добавляем поле прогресса
+        public Course(String name, String url, int id, int progress) {
             this.name = name;
             this.url = url;
             this.id = id;
+            this.progress = progress;
         }
 
         public String getName() { return name; }
         public int getId() { return id; }
+        public int getProgress() { return progress; }
     }
 }

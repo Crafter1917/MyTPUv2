@@ -197,8 +197,9 @@ public class ModuleDetailActivity extends BaseActivity {
 
     private void loadModuleData() throws Exception {
         int cmid = getIntent().getIntExtra("cmid", 0);
-        int instanceId = getIntent().getIntExtra("instanceId", 0); // Получаем instanceId
+        int instanceId = getIntent().getIntExtra("instanceId", 0);
         String type = getIntent().getStringExtra("type");
+
         int courseId = getIntent().getIntExtra("courseid", 0); // Получаем courseId
         String moduleName = getIntent().getStringExtra("name"); // Получаем название модуля
         Log.d("cmid", "cmid="+cmid);
@@ -253,15 +254,127 @@ public class ModuleDetailActivity extends BaseActivity {
                 loadScormContent(moduleId);
                 break;
             case "feedback":
-            case "book":
             case "label":
+                runOnUiThread(() -> {
+                    displayNoContent("Текстовый блок");
+                    progressBar.setVisibility(View.GONE);
+                });
                 break;
+            case "book": // Книги
+                loadBookContent(instanceId);
+                break;
+            case "glossary": // Глоссарий
+                loadGlossaryContent(instanceId);
+                break;
+            case "lesson": // Уроки
+                loadLessonContent(instanceId);
+                break;
+            case "wiki": // Wiki
+                loadStandardContent(type, instanceId);
+                break;
+            case "choice": // Голосования
+                loadStandardContent(type, instanceId);
+                break;
+
             case "lanebs":
                 loadLanebsContent(moduleId);
                 break;
             default:
-                throw new IllegalArgumentException("Неизвестный тип модуля: " + type);
+                loadGenericContent(type, instanceId);
         }
+    }
+
+    // Загрузка контента книги
+    private void loadBookContent(int instanceId) throws IOException, JSONException {
+        HttpUrl url = buildApiUrl("mod_book_get_books_by_courses")
+                .addQueryParameter("bookids[0]", String.valueOf(instanceId))
+                .build();
+
+        executeRequest(url, json -> {
+            JSONArray books = json.getJSONArray("books");
+            JSONObject book = books.getJSONObject(0);
+            displayHtmlContent(book.getString("intro"), book.getString("name"));
+        });
+    }
+
+    // Загрузка глоссария
+    private void loadGlossaryContent(int instanceId) throws IOException, JSONException {
+        HttpUrl url = buildApiUrl("mod_glossary_get_glossaries_by_courses")
+                .addQueryParameter("glossaryids[0]", String.valueOf(instanceId))
+                .build();
+
+        executeRequest(url, json -> {
+            JSONArray glossaries = json.getJSONArray("glossaries");
+            JSONObject glossary = glossaries.getJSONObject(0);
+            displayHtmlContent(glossary.getString("intro"), glossary.getString("name"));
+        });
+    }
+
+    // Загрузка уроков
+    private void loadLessonContent(int instanceId) throws IOException, JSONException {
+        HttpUrl url = buildApiUrl("mod_lesson_get_lessons_by_courses")
+                .addQueryParameter("lessonids[0]", String.valueOf(instanceId))
+                .build();
+
+        executeRequest(url, json -> {
+            JSONArray lessons = json.getJSONArray("lessons");
+            JSONObject lesson = lessons.getJSONObject(0);
+            displayHtmlContent(lesson.getString("intro"), lesson.getString("name"));
+        });
+    }
+
+    private void loadStandardContent(String type, int instanceId) {
+        try {
+            String function = "mod_" + type + "_get_" + type + "s_by_courses";
+            String paramName = type + "ids[0]";
+
+            HttpUrl url = buildApiUrl(function)
+                    .addQueryParameter(paramName, String.valueOf(instanceId))
+                    .build();
+
+            executeRequest(url, json -> {
+                try {
+                    JSONArray items = json.getJSONArray(type + "s");
+                    if (items.length() > 0) {
+                        JSONObject item = items.getJSONObject(0);
+                        displayHtmlContent(item.optString("intro", ""), item.getString("name"));
+                    } else {
+                        displayNoContent("Контент недоступен");
+                    }
+                } catch (JSONException e) {
+                    handleContentError(e);
+                }
+            });
+        } catch (Exception e) {
+            showError("Ошибка загрузки: " + e.getMessage());
+        }
+    }
+
+    private void displayHtmlContent(String html, String title) {
+        runOnUiThread(() -> {
+            moduleTitle.setText(title);
+            contentScrollView.setText(HtmlCompat.fromHtml(
+                    html,
+                    HtmlCompat.FROM_HTML_MODE_LEGACY
+            ));
+            progressBar.setVisibility(View.GONE);
+        });
+    }
+    // Универсальная загрузка для неподдерживаемых типов
+    private void loadGenericContent(String type, int instanceId) throws IOException, JSONException {
+        HttpUrl url = buildApiUrl("mod_" + type + "_get_" + type + "s_by_courses")
+                .addQueryParameter(type + "ids[0]", String.valueOf(instanceId))
+                .build();
+
+        executeRequest(url, json -> {
+            JSONArray items = json.getJSONArray(type + "s");
+            if (items.length() > 0) {
+                JSONObject item = items.getJSONObject(0);
+                displayHtmlContent(item.optString("intro", ""), item.getString("name"));
+            } else {
+                displayNoContent("Контент недоступен");
+            }
+        });
     }
 
     private void loadScormContent(int instanceId) throws IOException, JSONException {
@@ -398,7 +511,7 @@ public class ModuleDetailActivity extends BaseActivity {
         // 2. Формирование правильного запроса с courseids вместо assignmentids
         // Используйте cmid вместо courseId для запроса заданий
         HttpUrl url = buildApiUrl("mod_assign_get_assignments")
-                .addQueryParameter("assignmentids[0]", String.valueOf(courseId))
+                .addQueryParameter("assignmentids[0]", String.valueOf(courseId)) // должно быть instanceId
                 .build();
 
         executeRequest(url, json -> {
@@ -521,13 +634,9 @@ public class ModuleDetailActivity extends BaseActivity {
     private void executeRequest(HttpUrl url, ResponseHandler handler) throws IOException, JSONException {
         executor.execute(() -> {
             try {
-                Log.d(TAG, "Executing request to: " + url);
-
                 Request request = new Request.Builder().url(url).build();
                 try (Response response = client.newCall(request).execute()) {
                     String responseBody = response.body().string();
-                    Log.d(TAG, "Raw response: " + responseBody);
-
                     JSONObject json = new JSONObject(responseBody);
 
                     if (json.has("exception")) {
@@ -535,14 +644,10 @@ public class ModuleDetailActivity extends BaseActivity {
                         runOnUiThread(() -> showError("API Error: " + error));
                         return;
                     }
-
                     handler.handleResponse(json);
                 }
             } catch (Exception e) {
-                runOnUiThread(() -> {
-                    showError("Ошибка запроса: " + e.getMessage());
-                    progressBar.setVisibility(View.GONE);
-                });
+                runOnUiThread(() -> showError("Ошибка: " + e.getMessage()));
             }
         });
     }
@@ -705,7 +810,6 @@ public class ModuleDetailActivity extends BaseActivity {
     }
 
     private HttpUrl.Builder buildApiUrl(String wsFunction) {
-        Log.d("token in HttpUrl.Builder buildApiUrl:","token "+token);
         return HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
                 .addQueryParameter("wstoken", token)
                 .addQueryParameter("wsfunction", wsFunction)

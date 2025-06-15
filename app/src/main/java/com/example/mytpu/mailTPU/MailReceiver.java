@@ -29,7 +29,7 @@ public class MailReceiver extends BroadcastReceiver {
                     alarmIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
-            long firstTrigger = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
+            long firstTrigger = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(15);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, firstTrigger, pi);
@@ -60,7 +60,7 @@ public class MailReceiver extends BroadcastReceiver {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
 
-            long nextTrigger = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
+            long nextTrigger = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(15);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, nextTrigger, pi);

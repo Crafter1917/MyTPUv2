@@ -5,13 +5,13 @@
             android:id="@+id/nav_dashboard"
             android:title="Moodle"
             android:icon="@drawable/ic_book"/>
-        <!--
+
                 <item
                     android:id="@+id/nav_portal"
                     android:title="Портал"
-                    android:icon="wable/ic_portal"/>
+                    android:icon="@drawable/ic_portal"/>
 
-                -->
+
         <item
             android:id="@+id/nav_schedule"
             android:title="Расписание"

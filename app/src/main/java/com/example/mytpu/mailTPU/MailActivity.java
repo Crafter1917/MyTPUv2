@@ -145,10 +145,10 @@ public class MailActivity extends AppCompatActivity {
         );
 
         // Запускаем первый вызов сразу
-        scheduleNextAlarm(0);
+        scheduleNextAlarm(2);
     }
     public void scheduleNextAlarm(long delayMinutes) {
-        long triggerAtMillis = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delayMinutes);
+        long triggerAtMillis = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(delayMinutes);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setExactAndAllowWhileIdle(
@@ -221,29 +221,9 @@ public class MailActivity extends AppCompatActivity {
             } catch (IOException e) {
                 Log.w(TAG, "Periodic CSRF refresh failed");
             }
-        }, 0, 5, TimeUnit.MINUTES); // Каждые 5 минут
+        }, 0, 4, TimeUnit.MINUTES); // Каждые 5 минут
     }
 
-    private void scheduleMailCheck() {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
-
-        // Изменено на 1 минуту вместо 15
-        PeriodicWorkRequest mailCheckRequest = new PeriodicWorkRequest.Builder(
-                MailCheckWorker.class,
-                1, // 1 минута
-                TimeUnit.MINUTES
-        )
-                .setConstraints(constraints)
-                .build();
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "mailCheck",
-                ExistingPeriodicWorkPolicy.UPDATE, // Исправлено на UPDATE
-                mailCheckRequest
-        );
-    }
 
     private void initNavigationDrawer() {
         drawerLayout = findViewById(R.id.drawer_layout);
@@ -584,7 +564,7 @@ public class MailActivity extends AppCompatActivity {
             } else if (e.getMessage().contains("timed out")) {
                 showToast("Таймаут соединения");
             } else {
-            //    showToast("Ошибка сети");
+                //    showToast("Ошибка сети");
             }
         } else if (e instanceof JSONException) {
             showToast("Ошибка формата данных");
@@ -882,12 +862,6 @@ public class MailActivity extends AppCompatActivity {
         Log.d("Session", "Full session reset initiated");
 
         runOnUiThread(() -> {
-            new AlertDialog.Builder(this)
-                    .setTitle("Сессия истекла")
-                    .setMessage("Выполняется повторный вход...")
-                    .setCancelable(false)
-                    .show();
-
             executor.execute(() -> {
                 try {
                     clearSessionData(context);
@@ -904,14 +878,14 @@ public class MailActivity extends AppCompatActivity {
         });
     }
 
+    // В MailActivity.java
     private boolean performReauthentication() {
         try {
-            Log.d("Auth", "Starting automatic reauthentication");
-            JSONObject authResult = performMailLogin(username, password);
-
-            return authResult.getBoolean("success");
+            clearSessionData(context);
+            // Пауза перед повторной попыткой
+            Thread.sleep(1000);
+            return MailActivity.forceReauthenticate(context);
         } catch (Exception e) {
-            Log.d("Auth", "Reauthentication failed"+ e);
             return false;
         }
     }
@@ -1053,7 +1027,7 @@ public class MailActivity extends AppCompatActivity {
 
     public static class MyMailSingleton {
         private static MyMailSingleton instance;
-        private final OkHttpClient client;
+        private OkHttpClient client;
         private Context context;
         private final PersistentCookieJar cookieJar;
 
@@ -1075,7 +1049,16 @@ public class MailActivity extends AppCompatActivity {
             return instance;
         }
 
-        public OkHttpClient getClient() {
+        // В MyMailSingleton.java
+        public synchronized OkHttpClient getClient() {
+            if (client == null) {
+                client = new OkHttpClient.Builder()
+                        .cookieJar(cookieJar)
+                        .addInterceptor(new AuthInterceptor(context))
+                        .connectTimeout(30, TimeUnit.SECONDS)
+                        .readTimeout(60, TimeUnit.SECONDS)
+                        .build();
+            }
             return client;
         }
 

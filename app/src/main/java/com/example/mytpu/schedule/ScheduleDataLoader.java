@@ -21,21 +21,28 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class ScheduleDataLoader {
     private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
-    private final OkHttpClient client = new OkHttpClient();
+    private OkHttpClient client;
     private final Executor executor = Executors.newSingleThreadExecutor();
 
     public interface ScheduleDataListener {
         void onDataLoaded(List<ScheduleActivity.LessonData> lessons);
         void onError(String message);
     }
+    public ScheduleDataLoader() {
+        this.client = new OkHttpClient();
+    }
 
-    public void loadTodaySchedule(String groupOrTeacher, ScheduleDataListener listener) {
+    public void loadTodaySchedule(String group, ScheduleDataListener listener, int timeoutSeconds) {
+        OkHttpClient clientWithTimeout = client.newBuilder()
+                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .build();
         executor.execute(() -> {
             try {
                 Log.d(TAG, "loadTodaySchedule is started!");
@@ -43,7 +50,7 @@ public class ScheduleDataLoader {
                 Response response = client.newCall(request).execute();
                 String jsonData = response.body().string();
 
-                List<ScheduleActivity.LessonData> lessons = parseSchedule(jsonData, groupOrTeacher);
+                List<ScheduleActivity.LessonData> lessons = parseSchedule(jsonData, group);
 
                 // Переход в главный поток для обновления UI
                 new Handler(Looper.getMainLooper()).post(() -> {

@@ -45,6 +45,7 @@ public class MailCheckWorker extends Worker {
     private static final int NOTIFICATION_ID = 1;
     public static final String PREFS_NAME = "mail_prefs";
     public static final String KEY_LAST_UIDS = "last_uids";
+    private static final Object AUTH_LOCK = new Object();
 
     public MailCheckWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -54,81 +55,90 @@ public class MailCheckWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        MailActivity.initSharedPreferences(getApplicationContext());
-        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
-        int maxAttempts = 2;
-        int attempt = 0;
-        boolean success = false;
+        synchronized (AUTH_LOCK) {
+            MailActivity.initSharedPreferences(getApplicationContext());
+            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
+            int maxAttempts = 2;
+            int attempt = 0;
+            boolean success = false;
 
-        while (attempt < maxAttempts && !success) {
-            attempt++;
-            Log.d(TAG, "MailCheckWorker STARTED");
-            try {
-                Log.d(TAG, "Initializing client...");
-                MailActivity.initSharedPreferences(getApplicationContext());
-                if (client == null) {
-                    Log.e(TAG, "OkHttpClient is null");
-                    continue;
-                }
-                boolean sessionRestored = restoreSession();
-                if (!sessionRestored) {
-                    Log.e(TAG, "Failed to restore session");
-                    continue;
-                }
-                JSONArray messages = RoundcubeAPI.fetchMessages(
-                        getApplicationContext(),
-                        1,
-                        "INBOX"
-                );
-                Set<String> currentUids = extractUids(messages);
-                Set<String> newUids = findNewEmails(currentUids);
+            while (attempt < maxAttempts && !success) {
+                attempt++;
+                Log.d(TAG, "MailCheckWorker STARTED");
+                try {
+                    Log.d(TAG, "Initializing client...");
+                    MailActivity.initSharedPreferences(getApplicationContext());
+                    if (client == null) {
+                        Log.e(TAG, "OkHttpClient is null");
+                        continue;
+                    }
+                    boolean sessionRestored = restoreSession();
+                    if (!sessionRestored) {
+                        Log.e(TAG, "Failed to restore session");
+                        continue;
+                    }
+                    JSONArray messages = RoundcubeAPI.fetchMessages(
+                            getApplicationContext(),
+                            1,
+                            "INBOX"
+                    );
+                    Set<String> currentUids = extractUids(messages);
+                    Set<String> newUids = findNewEmails(currentUids);
 
-                if (!newUids.isEmpty()) {
-                    // Получаем детали новых писем
-                    List<EmailPreview> emailPreviews = new ArrayList<>();
-                    for (int i = 0; i < messages.length(); i++) {
-                        JSONObject msg = messages.getJSONObject(i);
-                        String uid = msg.getString("uid");
-                        if (newUids.contains(uid)) {
-                            try {
-                                emailPreviews.add(new EmailPreview(msg));
-                            } catch (JSONException e) {
-                                Log.e(TAG, "Error creating email preview", e);
+                    if (!newUids.isEmpty()) {
+                        // Получаем детали новых писем
+                        List<EmailPreview> emailPreviews = new ArrayList<>();
+                        for (int i = 0; i < messages.length(); i++) {
+                            JSONObject msg = messages.getJSONObject(i);
+                            String uid = msg.getString("uid");
+                            if (newUids.contains(uid)) {
+                                try {
+                                    emailPreviews.add(new EmailPreview(msg));
+                                } catch (JSONException e) {
+                                    Log.e(TAG, "Error creating email preview", e);
+                                }
                             }
                         }
+
+                        showNotification(emailPreviews);
+                        saveLastUids(currentUids);
                     }
 
-                    showNotification(emailPreviews);
-                    saveLastUids(currentUids);
-                }
+                    Log.d(TAG, "Received " + messages.length() + " messages");
+                    Log.d(TAG, "Current UIDs: " + currentUids);
+                    Log.d(TAG, "New UIDs: " + newUids);
+                    success = true;
+                    Log.d(TAG, "Session restored: " + sessionRestored);
+                    Log.d(TAG, "Fetched messages: " + messages.length());
+                    Log.d(TAG, "New emails found: " + newUids.size());
+                    return Result.success();
 
-                Log.d(TAG, "Received " + messages.length() + " messages");
-                Log.d(TAG, "Current UIDs: " + currentUids);
-                Log.d(TAG, "New UIDs: " + newUids);
-                success = true;
-                Log.d(TAG, "Session restored: " + sessionRestored);
-                Log.d(TAG, "Fetched messages: " + messages.length());
-                Log.d(TAG, "New emails found: " + newUids.size());
-                return Result.success();
-
-            } catch (Exception e) {
-                Log.e(TAG, "Mail check error on attempt " + attempt, e);
-                if (!restoreSession()) {
-                    Log.e(TAG, "Failed to restore session after error");
+                } catch (Exception e) {
+                    Log.e(TAG, "Mail check error on attempt " + attempt, e);
+                    if (attempt < maxAttempts) {
+                        try {
+                            Thread.sleep(5000); // Пауза 5 сек между попытками
+                        } catch (InterruptedException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    }
+                    if (!restoreSession()) {
+                        Log.e(TAG, "Failed to restore session after error");
+                    }
                 }
             }
-        }
 
-        if (!success) {
-            Log.e(TAG, "Mail check failed after " + maxAttempts + " attempts");
-            return Result.retry();
+            if (!success) {
+                Log.e(TAG, "Mail check failed after " + maxAttempts + " attempts");
+                return Result.retry();
+            }
+            scheduleNextRun();
+            return Result.success();
         }
-        scheduleNextRun();
-        return Result.success();
     }
     private void scheduleNextRun() {
         OneTimeWorkRequest nextRequest = new OneTimeWorkRequest.Builder(MailCheckWorker.class)
-                .setInitialDelay(1, TimeUnit.MINUTES)
+                .setInitialDelay(15, TimeUnit.SECONDS)
                 .build();
 
         WorkManager.getInstance(getApplicationContext())
@@ -168,11 +178,8 @@ public class MailCheckWorker extends Worker {
 
         Set<String> newUids = new HashSet<>(currentUids);
         newUids.removeAll(lastUids);
-
-        // Отладочная проверка
         Log.d(TAG, "Last UIDs: " + lastUids.size());
         Log.d(TAG, "New UIDs count: " + newUids.size());
-
         return newUids;
     }
 

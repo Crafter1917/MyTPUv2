@@ -10,13 +10,12 @@
         android:id="@+id/tvTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Расписание на сегодня"
-        android:textSize="24sp"
-        android:textStyle="bold"
         android:gravity="center"
-        android:padding="16dp"
-        android:background="?attr/colorPrimary"
-        android:textColor="?android:attr/textColorPrimaryInverse"/>
+        android:padding="4dp"
+        android:text="Расписание на сегодня"
+        android:textColor="@color/textPrimary"
+        android:textSize="24sp"
+        android:textStyle="bold" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -36,11 +35,28 @@
             android:layout_height="match_parent">
 
             <LinearLayout
-                android:id="@+id/scheduleContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp"/>
+
+                android:padding="4dp">
+
+                <!-- Контейнер для карточек расписания -->
+                <LinearLayout
+                    android:id="@+id/scheduleContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="4dp"
+                    android:orientation="vertical"/>
+
+                <!-- Контейнер для фрагмента прогресса курсов -->
+                <FrameLayout
+                    android:id="@+id/progressContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"/>
+
+            </LinearLayout>
         </ScrollView>
     </LinearLayout>
 </LinearLayout>

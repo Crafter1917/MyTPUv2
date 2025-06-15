@@ -351,8 +351,6 @@ public class ScheduleActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    // ScheduleActivity.java - дополнительно обновляем метод сохранения настроек
-
     private void saveSettings(SettingsPagerAdapter adapter) {
         SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -931,7 +929,6 @@ public class ScheduleActivity extends AppCompatActivity {
         }
     }
 
-
     private void deleteExistingEventsForCurrentSearch() throws Exception {
         ContentResolver cr = getContentResolver();
         long calendarId = getGoogleCalendarId();
@@ -1031,27 +1028,6 @@ public class ScheduleActivity extends AppCompatActivity {
         return weeks;
     }
 
-    private boolean eventExists(LessonData lesson) {
-        String selection = Events.TITLE + " = ? AND " +
-                Events.DTSTART + " = ? AND " +
-                Events.DTEND + " = ?";
-
-        String[] selectionArgs = {
-                lesson.subject,
-                String.valueOf(lesson.startTime.getTime()),
-                String.valueOf(lesson.endTime.getTime())
-        };
-
-        try (Cursor cursor = getContentResolver().query(
-                Events.CONTENT_URI,
-                null,
-                selection,
-                selectionArgs,
-                null
-        )) {
-            return cursor != null && cursor.getCount() > 0;
-        }
-    }
 
     private void setupCurrentDateButton() {
         currentDateButton = findViewById(R.id.currentDateButton);

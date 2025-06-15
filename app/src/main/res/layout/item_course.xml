@@ -2,44 +2,109 @@
 <androidx.cardview.widget.CardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/course_container"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    app:cardCornerRadius="12dp"
+    app:cardCornerRadius="16dp"
     app:cardUseCompatPadding="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="4dp"
+        android:orientation="vertical"
+        android:padding="16dp"
         android:background="?attr/selectableItemBackground">
 
-        <ImageView
-            android:id="@+id/course_icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="center"
-            android:src="@drawable/ic_book"
-            app:tint="@color/textPrimary" />
-
-        <TextView
-            android:id="@+id/course_title"
-            android:layout_width="wrap_content"
+        <!-- Первая строка: Иконка + Название + Стрелка -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginStart="16dp"
-            android:layout_weight="1"
-            android:textColor="@color/textPrimary"
-            android:textSize="18sp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center"
-            android:src="@drawable/ic_chevron_right"
-            app:tint="@color/textSecondary" />
+            <ImageView
+                android:id="@+id/course_icon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_book"
+                app:tint="?attr/colorPrimary" />
 
+            <TextView
+                android:id="@+id/course_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginStart="16dp"
+                android:layout_weight="1"
+                android:textColor="@color/textPrimary"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:maxLines="2"
+                android:ellipsize="end"
+                tools:text="Название курса с длинным текстом для проверки переноса" />
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/textSecondary" />
+        </LinearLayout>
+
+        <!-- Вторая строка: Прогресс-бар и процент -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="12dp">
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_weight="1"
+                android:progress="50"
+                android:progressTint="?attr/colorPrimary" />
+
+            <TextView
+                android:id="@+id/progressText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="50%"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="14sp"
+                android:textStyle="bold"/>
+        </LinearLayout>
+
+        <!-- Третья строка: Дополнительная информация (необязательно) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔔 2 новых"
+                android:textColor="@color/textSecondary"
+                android:textSize="12sp"
+                android:drawablePadding="4dp"
+                android:paddingEnd="16dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📅 3 задания"
+                android:textColor="@color/textSecondary"
+                android:textSize="12sp"/>
+        </LinearLayout>
     </LinearLayout>
-
 </androidx.cardview.widget.CardView>

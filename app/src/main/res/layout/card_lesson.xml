@@ -5,35 +5,43 @@
     android:id="@+id/cardView"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="4dp">
+    app:cardCornerRadius="8dp"
+    app:cardUseCompatPadding="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/selectableItemBackground"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="16dp"
+        android:background="?attr/selectableItemBackground">
 
-        <!-- Заголовок с названием предмета -->
-        <TextView
-            android:id="@+id/tvSubject"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:paddingHorizontal="8dp"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <!-- Время занятия -->
+        <!-- Заголовок с названием предмета и стрелкой -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/tvSubject"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Время занятия с оригинальной иконкой -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:layout_marginBottom="8dp">
 
             <ImageView
                 android:layout_width="24dp"
@@ -46,17 +54,17 @@
                 android:id="@+id/tvTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textSize="14sp"
                 android:textColor="?android:attr/textColorSecondary" />
         </LinearLayout>
 
-        <!-- Преподаватель -->
+        <!-- Преподаватель с оригинальной иконкой -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:layout_marginBottom="8dp">
 
             <ImageView
                 android:layout_width="24dp"
@@ -68,39 +76,46 @@
             <TextView
                 android:id="@+id/tvTeacher"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- Аудитория -->
+        <!-- Аудитория с оригинальной иконкой и типом занятия -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:layout_marginBottom="8dp"
+            android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginEnd="8dp"
-                android:src="@drawable/ic_room"
-                app:tint="?android:attr/textColorSecondary" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginEnd="8dp"
+                    android:src="@drawable/ic_room"
+                    app:tint="?android:attr/textColorSecondary" />
+
+                <TextView
+                    android:id="@+id/tvAudience"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/tvAudience"
+                android:id="@+id/tvType"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary" />
         </LinearLayout>
-
-        <!-- Тип занятия (с цветным фоном) -->
-        <TextView
-            android:id="@+id/tvType"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/rounded_bg"
-            android:backgroundTint="#E0E0E0"
-            android:paddingHorizontal="8dp"
-            android:textAllCaps="true"
-            android:textSize="14sp" />
     </LinearLayout>
 </androidx.cardview.widget.CardView>

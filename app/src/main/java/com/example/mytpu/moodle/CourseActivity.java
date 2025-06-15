@@ -51,17 +51,26 @@ public class CourseActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_course);
 
-        initializeViews();
+        Log.d("CourseActivity", "Starting CourseActivity");
 
         int courseId = getIntent().getIntExtra("courseId", -1);
         String courseName = getIntent().getStringExtra("courseName");
 
+        Log.d("CourseActivity", "Received courseId: " + courseId);
+        Log.d("CourseActivity", "Received courseName: " + courseName);
+
+        if (courseId == -1 || courseName == null) {
+            Toast.makeText(this, "Ошибка: данные курса не получены", Toast.LENGTH_SHORT).show();
+            Log.e("CourseActivity", "Invalid course data");
+            finish();
+            return;
+        }
+        initializeViews();
         if (courseId == -1 || courseName == null) {
             Toast.makeText(this, "Ошибка: данные курса не получены", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
-
         courseTitle.setText(courseName);
 
         client = ((MyApplication) getApplication()).getClient();
@@ -150,9 +159,17 @@ public class CourseActivity extends AppCompatActivity {
         List<CourseContentAdapter.CourseSection> courseSections = new ArrayList<>();
 
         for (int i = 0; i < sections.length(); i++) {
-
             JSONObject section = sections.getJSONObject(i);
-            JSONArray modules = section.getJSONArray("modules");
+            JSONArray modules = section.optJSONArray("modules");
+            String sectionName = section.optString("name", "Без названия");
+            if (sectionName.isEmpty()) sectionName = "Раздел " + (i + 1);
+
+            // Если нет модулей - пропускаем раздел
+            if (modules == null || modules.length() == 0) {
+                Log.d(TAG, "No modules in section: " + section.getString("name"));
+                continue;
+            }
+
             List<ModuleAdapter.CourseModule> courseModules = new ArrayList<>();
 
             for (int j = 0; j < modules.length(); j++) {
@@ -182,7 +199,7 @@ public class CourseActivity extends AppCompatActivity {
                                 modName,
                                 courseId));
             }
-            courseSections.add(new CourseContentAdapter.CourseSection(section.getString("name"), courseModules));
+            courseSections.add(new CourseContentAdapter.CourseSection(sectionName, courseModules));
         }
         return courseSections;
     }

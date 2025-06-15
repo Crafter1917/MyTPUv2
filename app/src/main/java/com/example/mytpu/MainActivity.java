@@ -51,6 +51,7 @@ public class MainActivity extends AppCompatActivity
         setupNavigation();
         checkAuthState();
     }
+
     private void showTodaySchedule() {
         unlockDrawer();
         updateNavHeaderUsername();
@@ -59,12 +60,20 @@ public class MainActivity extends AppCompatActivity
                 .commit();
 
     }
+
     private void updateMainContent() {
         unlockDrawer();
         updateNavigationMenu();
         updateNavHeaderUsername();
         fragmentContainer.setVisibility(View.VISIBLE);
-        showTodaySchedule(); // Добавлен вызов расписания
+
+        // Обновляем фрагмент вместо создания нового
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+        if (currentFragment instanceof TodayScheduleFragment || currentFragment == null) {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.content_frame, new TodayScheduleFragment())
+                    .commit();
+        }
     }
 
     private void initSharedPreferences() {
@@ -88,6 +97,7 @@ public class MainActivity extends AppCompatActivity
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
     }
+
     private void setupNavigation() {
         drawerLayout = findViewById(R.id.drawer_layout);
         toggle = new ActionBarDrawerToggle(
@@ -125,13 +135,6 @@ public class MainActivity extends AppCompatActivity
                 sharedPreferences.contains("token");
     }
 
-    private void showMainContent() {
-        unlockDrawer();
-        updateNavigationMenu();
-        updateNavHeaderUsername(); // Добавьте этот вызов
-        fragmentContainer.setVisibility(View.GONE);
-    }
-
     private void updateNavHeaderUsername() {
         NavigationView navigationView = findViewById(R.id.nav_view);
         if (navigationView != null) {
@@ -143,6 +146,7 @@ public class MainActivity extends AppCompatActivity
             }
         }
     }
+
     private void showLoginFragment() {
         fragmentContainer.setVisibility(View.VISIBLE);
         replaceFragment(new MainScreen(), false); // Уберите добавление в back stack
@@ -181,8 +185,8 @@ public class MainActivity extends AppCompatActivity
             startActivity(new Intent(this, ScheduleActivity.class));
         } else if (id == R.id.nav_mail) {
             startActivity(new Intent(this, MailActivity.class));
-        //} else if (id == R.id.nav_portal) {
-        //portalAuthHelper.authenticateAndOpenPortal();
+        } else if (id == R.id.nav_portal) {
+        portalAuthHelper.authenticateAndOpenPortal();
         } else if (id == R.id.nav_settings) {
         startActivity(new Intent(this, SettingsActivity.class));
         }
@@ -219,7 +223,17 @@ public class MainActivity extends AppCompatActivity
             }
         }
     }
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshContent();
+    }
 
+    private void refreshContent() {
+        if (isLoggedIn()) {
+            updateMainContent();
+        }
+    }
     @Override
     public void onBackPressed() {
         if (drawerLayout.isDrawerOpen(GravityCompat.START)) {

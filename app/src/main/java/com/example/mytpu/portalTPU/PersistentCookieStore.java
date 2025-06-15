@@ -35,24 +35,29 @@ public class PersistentCookieStore implements CookieJar {
         }
         return instance;
     }
-    public synchronized void add(HttpUrl url, Cookie cookie) {
-        // Автоматически продлеваем срок действия кук
-        if (cookie.persistent()) {
-            Cookie renewed = new Cookie.Builder()
-                    .name(cookie.name())
-                    .value(cookie.value())
-                    .domain(cookie.domain())
-                    .path(cookie.path())
-                    .expiresAt(System.currentTimeMillis() + 86400000) // 24 часа
-                    .secure()
-                    .httpOnly()
-                    .build();
 
-            cookies.removeIf(c -> matches(c, renewed));
-            cookies.add(renewed);
-        }
+    public synchronized void add(HttpUrl url, Cookie cookie) {
+        // Удаляем старую куку если есть
+        cookies.removeIf(c -> matches(c, cookie));
+
+        // Всегда добавляем куку как персистентную
+        Cookie persistentCookie = new Cookie.Builder()
+                .name(cookie.name())
+                .value(cookie.value())
+                .domain(cookie.domain())
+                .path(cookie.path())
+                .expiresAt(cookie.persistent() ?
+                        cookie.expiresAt() :
+                        System.currentTimeMillis() + 86400000) // 24 часа
+                .secure()
+                .httpOnly()
+                .build();
+
+        cookies.add(persistentCookie);
+        Log.d(TAG, "Persisting cookie: " + cookie.name() + " | domain: " + cookie.domain());
         saveCookiesToStorage();
     }
+
     private PersistentCookieStore(Context context) {
         try {
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -71,28 +76,31 @@ public class PersistentCookieStore implements CookieJar {
 
     @Override
     public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+        Log.d(TAG, "Saving cookies for: " + url.host());
         for (Cookie cookie : cookies) {
-            if (cookie.persistent()) {
-                this.cookies.removeIf(c -> matches(c, cookie));
-                this.cookies.add(cookie);
-            }
+            Log.d(TAG, "Saving cookie: " + cookie.name() + "=" + cookie.value());
+            add(url, cookie);
         }
         saveCookiesToStorage();
     }
 
     @Override
     public List<Cookie> loadForRequest(HttpUrl url) {
+        Log.d(TAG, "Loading cookies for: " + url.host());
         List<Cookie> matchingCookies = new ArrayList<>();
         long now = System.currentTimeMillis();
 
         for (Cookie cookie : cookies) {
             if (cookie.expiresAt() <= now) {
-                continue; // Skip expired cookies
+                Log.d(TAG, "Skipping expired cookie: " + cookie.name());
+                continue;
             }
 
             if (cookie.matches(url)) {
+                Log.d(TAG, "Adding cookie: " + cookie.name());
                 matchingCookies.add(cookie);
             }
+            Log.d(TAG, "Adding cookie: " + cookie.name() + " | domain: " + cookie.domain());
         }
         return matchingCookies;
     }
@@ -149,21 +157,24 @@ public class PersistentCookieStore implements CookieJar {
             Cookie.Builder builder = new Cookie.Builder()
                     .name(json.getString("name"))
                     .value(json.getString("value"))
-                    .expiresAt(json.getLong("expiresAt"))
                     .path(json.getString("path"));
 
-            // Обработка флагов
-            if (json.getBoolean("secure")) {
-                builder.secure();
+            // Обработка срока действия
+            if (json.has("expiresAt") && !json.isNull("expiresAt")) {
+                builder.expiresAt(json.getLong("expiresAt"));
             }
-            if (json.getBoolean("httpOnly")) {
-                builder.httpOnly();
-            }
+
+            // Обработка домена
+            String domain = json.getString("domain");
             if (json.getBoolean("hostOnly")) {
-                builder.hostOnlyDomain(json.getString("domain"));
+                builder.hostOnlyDomain(domain);
             } else {
-                builder.domain(json.getString("domain"));
+                builder.domain(domain);
             }
+
+            // Обработка флагов
+            if (json.getBoolean("secure")) builder.secure();
+            if (json.getBoolean("httpOnly")) builder.httpOnly();
 
             return builder.build();
         } catch (JSONException e) {

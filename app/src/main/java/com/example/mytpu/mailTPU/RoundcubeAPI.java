@@ -190,7 +190,7 @@ public class RoundcubeAPI {
                 emailJson.put("uid", uid);
                 result.put(emailJson);
             } catch (JSONException e) {
-                Log.e("RoundcubeAPI", "JSON parse error: " + e.getMessage());
+                //Log.e("RoundcubeAPI", "JSON parse error: " + e.getMessage());
             }
         }
         Log.i(TAG, "Total messages parsed: " + result.length());
@@ -203,13 +203,13 @@ public class RoundcubeAPI {
     }
     private static void handleResponseErrors(Response response, String responseBody)
             throws IOException, MailActivity.SessionExpiredException, TooManyAttemptsException {
-
-        // Проверка по содержимому ответа
         if (responseBody.contains("session_error")
                 || responseBody.contains("Your session is invalid")) {
             throw new MailActivity.SessionExpiredException("Session expired (server response)");
         }
-
+        if (responseBody.contains("Too many login attempts")) {
+            throw new TooManyAttemptsException("Слишком много попыток. Попробуйте позже");
+        }
         if (responseBody.contains("id=\"rcmloginform\"")) {
             throw new MailActivity.SessionExpiredException("Требуется повторная авторизация");
         }
@@ -541,9 +541,11 @@ public class RoundcubeAPI {
         }
     }
 
+    // В RoundcubeAPI.java
     private static String getCookiesString(OkHttpClient client) {
         List<Cookie> cookies = client.cookieJar()
                 .loadForRequest(HttpUrl.parse("https://letter.tpu.ru/"));
+        // Фильтрация актуальных кук
         return cookies.stream()
                 .map(c -> c.name() + "=" + c.value())
                 .collect(Collectors.joining("; "));

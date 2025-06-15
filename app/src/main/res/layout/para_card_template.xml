@@ -5,28 +5,36 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     app:cardCornerRadius="8dp"
-    android:layout_marginBottom="4dp">
+    android:layout_margin="8dp"
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@color/card_background"
+    app:strokeColor="@color/border_color"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="?attr/selectableItemBackground"
+        android:padding="12dp">
 
         <TextView
             android:id="@+id/para"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingLeft="12sp"
-            android:paddingTop="12sp"
-            android:paddingBottom="4sp"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:padding="12dp"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/section_header_bg"/>
 
         <LinearLayout
             android:id="@+id/LinearLayout_para"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"/>
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:background="@color/dark_background"/>
 
     </LinearLayout>
 </androidx.cardview.widget.CardView>

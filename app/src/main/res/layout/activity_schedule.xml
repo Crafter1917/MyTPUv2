@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <RelativeLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -7,22 +6,22 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    android:id="@+id/root_layout">
-
+    android:id="@+id/root_layout"
+    android:background="@color/dark_background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#33000000"
+        android:background="@color/semi_transparent_background"
         android:clipToPadding="true"
         android:orientation="vertical">
+
         <!-- Поисковая строка -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:orientation="horizontal"
-
             android:paddingLeft="16dp"
             android:paddingTop="8dp"
             android:paddingRight="16dp"
@@ -34,6 +33,7 @@
                 android:layout_height="48dp"
                 app:cardCornerRadius="24dp"
                 app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/card_background"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
 
@@ -49,7 +49,8 @@
                         android:layout_height="48dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Поиск"
-                        android:src="@drawable/ic_search" />
+                        android:src="@drawable/ic_search"
+                        app:tint="@color/text_primary" />
 
                     <AutoCompleteTextView
                         android:id="@+id/searchField"
@@ -61,6 +62,8 @@
                         android:imeOptions="actionSearch"
                         android:paddingStart="16dp"
                         android:paddingEnd="16dp"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_secondary"
                         android:visibility="gone" />
 
                 </LinearLayout>
@@ -75,6 +78,7 @@
                 android:layout_marginEnd="16dp"
                 android:gravity="center"
                 android:text="Расписание"
+                android:textColor="@color/text_primary"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
@@ -88,9 +92,7 @@
             android:layout_weight="1"
             android:background="@drawable/rounded_scroll_background"
             android:contentDescription="@string/app_name"
-            android:fillViewport="true"
-
-            >
+            android:fillViewport="true">
 
             <!-- Основной контейнер расписания -->
             <LinearLayout
@@ -98,10 +100,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                >
+                android:background="@color/dark_background">
 
                 <LinearLayout
-
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
@@ -111,8 +112,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
+                        android:indeterminateTint="@color/progress_indicator_color"
                         android:visibility="gone" />
-
 
                     <!-- Повторить CardView для других дней -->
                 </LinearLayout>
@@ -129,14 +130,13 @@
                     android:layout_height="wrap_content"
                     android:visibility="gone" />
             </LinearLayout>
-
         </ScrollView>
 
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="16dp">
-
+            app:cardCornerRadius="16dp"
+            app:cardBackgroundColor="@color/card_background">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -154,11 +154,10 @@
                         android:id="@+id/currentDateButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:backgroundTint="@color/accent_color"
                         android:text="Сегодня"
-                        android:textColor="@color/textHighlight"
+                        android:textColor="@color/text_button"
                         android:textStyle="bold" />
-
-                    <!-- Этот Space заполнит всё свободное пространство между кнопкой и текстом -->
 
                     <Space
                         android:layout_width="0dp"
@@ -169,10 +168,10 @@
                         android:id="@+id/tvYear"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-
                         android:layout_gravity="center"
                         android:gravity="center"
                         android:paddingRight="8dp"
+                        android:textColor="@color/text_primary"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
@@ -183,25 +182,26 @@
                         android:layout_marginEnd="16dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Настройка напоминаний"
-                        android:src="@drawable/ic_settings" />
+                        android:src="@drawable/ic_settings"
+                        app:tint="@color/text_primary" />
 
                     <ImageButton
                         android:id="@+id/btnSyncCalendar"
                         android:layout_width="48dp"
                         android:layout_height="48dp"
-                        android:src="@drawable/ic_sync"
                         android:background="?attr/selectableItemBackgroundBorderless"
-
-                        android:contentDescription="Синхронизировать с календарем"/>
+                        android:contentDescription="Синхронизировать с календарем"
+                        android:src="@drawable/ic_sync"
+                        app:tint="@color/text_primary" />
 
                     <ImageButton
                         android:id="@+id/btnUnsyncCalendar"
                         android:layout_width="48dp"
                         android:layout_height="48dp"
-                        android:src="@drawable/ic_sync_delite"
                         android:background="?attr/selectableItemBackgroundBorderless"
-
-                        android:contentDescription="Синхронизировать с календарем"/>
+                        android:contentDescription="Отменить синхронизацию"
+                        android:src="@drawable/ic_sync_delite"
+                        app:tint="@color/text_primary" />
 
                 </LinearLayout>
 
@@ -218,15 +218,14 @@
                     tools:listitem="@layout/item_week_wheel" />
 
             </LinearLayout>
-
         </androidx.cardview.widget.CardView>
 
-        <!-- Внутри ScrollView или другого контейнера -->
         <TextView
             android:id="@+id/currentData"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Текущая дата"
+            android:textColor="@color/text_primary"
             android:visibility="gone" />
 
         <TextView
@@ -234,12 +233,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Дата"
+            android:textColor="@color/text_primary"
             android:visibility="gone" />
 
-
     </LinearLayout>
-
-    <!-- Панель навигации по неделям -->
-
-    <!-- Область с расписанием -->
 </RelativeLayout>

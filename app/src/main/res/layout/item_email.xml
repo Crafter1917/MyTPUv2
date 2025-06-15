@@ -7,14 +7,18 @@
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     app:cardCornerRadius="8dp"
-    app:cardElevation="2dp">
+    app:cardElevation="2dp"
+    app:cardBackgroundColor="@color/card_background"
+    app:strokeColor="@color/border_color"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="4dp"
-        android:gravity="center_vertical">
+        android:padding="12dp"
+        android:gravity="center_vertical"
+        android:background="?attr/selectableItemBackground">
 
         <ImageView
             android:id="@+id/imageView"
@@ -22,20 +26,21 @@
             android:layout_height="40dp"
             android:padding="4dp"
             android:scaleType="centerCrop"
-            android:src="@drawable/email_icon"/>
+            android:src="@drawable/email_icon"
+            app:tint="@color/text_primary"/>
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
-            >
+            android:layout_marginStart="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                >
+                android:gravity="center_vertical">
 
                 <TextView
                     android:id="@+id/email_from"
@@ -45,6 +50,7 @@
                     android:text="Sender Name"
                     android:textSize="16sp"
                     android:textStyle="bold"
+                    android:textColor="@color/text_primary"
                     android:ellipsize="end"
                     android:maxLines="1" />
 
@@ -54,7 +60,7 @@
                     android:layout_height="wrap_content"
                     android:text="12:30 PM"
                     android:padding="4dp"
-                    android:textColor="?android:attr/textColorSecondary"
+                    android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -64,9 +70,22 @@
                 android:layout_height="wrap_content"
                 android:text="Subject of the Email"
                 android:textSize="14sp"
+                android:textColor="@color/text_primary"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/email_preview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Preview of email content..."
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:layout_marginTop="4dp"
+                android:visibility="gone"/>
         </LinearLayout>
     </LinearLayout>
 

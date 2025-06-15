@@ -47,6 +47,8 @@ import androidx.core.text.HtmlCompat;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
+import com.example.mytpu.BaseActivity;
+import com.example.mytpu.ColorManager;
 import com.example.mytpu.R;
 
 import org.json.JSONArray;
@@ -78,7 +80,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class ModuleDetailActivity extends AppCompatActivity {
+public class ModuleDetailActivity extends BaseActivity {
+    private ColorManager colorManager;
     public static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
     private static final String TAG = "ModuleDetail";
     private static final String SHARED_PREFS_NAME = "secret_shared_prefs";
@@ -140,7 +143,26 @@ public class ModuleDetailActivity extends AppCompatActivity {
             }
         });
     }
+    @Override
+    protected void applyCustomColors() {
+        if (contentLayout != null) {
+            // Обход всех дочерних элементов и обновление цветов
+            for (int i = 0; i < contentLayout.getChildCount(); i++) {
+                View child = contentLayout.getChildAt(i);
+                updateViewColors(child);
+            }
+        }
+    }
 
+    private void updateViewColors(View view) {
+        if (view instanceof TextView) {
+            TextView tv = (TextView) view;
+            if ("error".equals(tv.getTag())) {
+                tv.setTextColor(colorManager.getColor("error_color"));
+            }
+        }
+        // Добавьте другие проверки по необходимости
+    }
     private void initViews() {
         moduleTitle = findViewById(R.id.moduleTitle);
         contentView = findViewById(R.id.plainTextContentView);
@@ -466,7 +488,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
             TextView textView = new TextView(this);
             textView.setText(message);
             textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            textView.setTextColor(Color.RED);
+            textView.setTextColor(colorManager.getColor("error_color"));
             textView.setGravity(Gravity.CENTER);
 
             contentLayout.addView(textView);
@@ -788,7 +810,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
 
             // CardView
             CardView card = new CardView(this);
-            card.setCardBackgroundColor(Color.WHITE);
+            card.setCardBackgroundColor(colorManager.getColor("card_background"));
             card.setCardElevation(8f);
             card.setRadius(16f);
             card.setUseCompatPadding(true);
@@ -807,7 +829,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
             }
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
             title.setTypeface(null, Typeface.BOLD);
-            title.setTextColor(Color.DKGRAY);
+            title.setTextColor(colorManager.getColor("primary_text_color"));
             layout.addView(title);
 
             // Добавляем информационные блоки
@@ -842,7 +864,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
         TextView tv = new TextView(this);
         tv.setText(String.format("%s: %s", label, value));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tv.setTextColor(Color.parseColor("#616161"));
+        tv.setTextColor(colorManager.getColor("secondary_text_color"));
         tv.setPadding(0, 16, 0, 0);
         parent.addView(tv);
     }
@@ -851,7 +873,9 @@ public class ModuleDetailActivity extends AppCompatActivity {
         TextView tv = new TextView(this);
         tv.setText(String.format("• %s: %s", label, status ? "✅ Доступно" : "❌ Недоступно"));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tv.setTextColor(status ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828"));
+        int successColor = colorManager.getColor("color_1");
+        int errorColor = colorManager.getColor("color_2");
+        tv.setTextColor(status ? successColor : errorColor);
         tv.setPadding(0, 8, 0, 0);
         parent.addView(tv);
     }

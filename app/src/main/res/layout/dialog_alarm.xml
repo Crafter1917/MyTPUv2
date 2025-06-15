@@ -2,19 +2,25 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@color/dark_background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="@color/card_background"
+        android:padding="16dp">
 
         <!-- Выбор пар -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Выберите пары:"
-            android:textSize="16sp"/>
+            android:textSize="16sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -27,14 +33,18 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="1 пара"/>
+                android:text="1 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
 
             <CheckBox
                 android:id="@+id/para2"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="2 пара"/>
+                android:text="2 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
         </LinearLayout>
 
         <LinearLayout
@@ -47,14 +57,18 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="3 пара"/>
+                android:text="3 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
 
             <CheckBox
                 android:id="@+id/para4"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="4 пара"/>
+                android:text="4 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
         </LinearLayout>
 
         <LinearLayout
@@ -67,14 +81,18 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="5 пара"/>
+                android:text="5 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
 
             <CheckBox
                 android:id="@+id/para6"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="6 пара"/>
+                android:text="6 пара"
+                android:textColor="@color/text_primary"
+                android:buttonTint="@color/accent_color"/>
         </LinearLayout>
 
         <!-- Дополнительные настройки -->
@@ -83,6 +101,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Только для текущего поиска"
+            android:textColor="@color/text_primary"
+            android:buttonTint="@color/accent_color"
             android:layout_marginTop="16dp"/>
 
         <Button
@@ -90,6 +110,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Сохранить"
+            android:textColor="@color/text_button"
+            android:backgroundTint="@color/accent_color"
             android:layout_marginTop="16dp"/>
 
     </LinearLayout>

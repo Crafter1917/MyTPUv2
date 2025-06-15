@@ -1,5 +1,4 @@
 package com.example.mytpu;
-
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -11,23 +10,20 @@ import android.util.TypedValue;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
+import android.widget.TextView;
 import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-
 import yuku.ambilwarna.AmbilWarnaDialog;
 
-public class SettingsActivity extends AppCompatActivity {
+public class SettingsActivity extends BaseActivity {
     private final Map<String, Integer> dayColors = Collections.synchronizedMap(new HashMap<>());
     private final Map<String, Integer> nightColors = Collections.synchronizedMap(new HashMap<>());
     private boolean isNightMode = false;
@@ -283,7 +279,50 @@ public class SettingsActivity extends AppCompatActivity {
         saveColors();
         Toast.makeText(this, "Настройки сброшены", Toast.LENGTH_SHORT).show();
     }
+    @Override
+    protected void applyCustomColors() {
+        ColorManager colorManager = ColorManager.getInstance(this, isNightMode);
 
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        if (toolbar != null) {
+            toolbar.setBackgroundColor(colorManager.getColor("primary_color"));
+        }
+
+        TextView themeLabel = findViewById(R.id.themeLabel);
+        if (themeLabel != null) {
+            themeLabel.setTextColor(colorManager.getColor("text_primary"));
+        }
+
+        TextView dayColorsLabel = findViewById(R.id.dayColorsLabel);
+        if (dayColorsLabel != null) {
+            dayColorsLabel.setTextColor(colorManager.getColor("text_primary"));
+        }
+
+        TextView nightColorsLabel = findViewById(R.id.nightColorsLabel);
+        if (nightColorsLabel != null) {
+            nightColorsLabel.setTextColor(colorManager.getColor("text_primary"));
+        }
+
+        Button saveButton = findViewById(R.id.saveButton);
+        if (saveButton != null) {
+            saveButton.setBackgroundColor(colorManager.getColor("button_save_background"));
+            saveButton.setTextColor(colorManager.getColor("text_button"));
+        }
+
+        Button resetButton = findViewById(R.id.resetButton);
+        if (resetButton != null) {
+            resetButton.setBackgroundColor(colorManager.getColor("button_reset_background"));
+            resetButton.setTextColor(colorManager.getColor("text_button"));
+        }
+
+        // Обновляем адаптеры
+        if (dayAdapter != null) {
+            dayAdapter.updateColors(dayColors);
+        }
+        if (nightAdapter != null) {
+            nightAdapter.updateColors(nightColors);
+        }
+    }
     @Override
     public boolean onSupportNavigateUp() {
         onBackPressed();

@@ -1,28 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_500">#6200EE</color>
-    <color name="purple_700">#3700B3</color>
-    <color name="teal_200">#03DAC5</color>
-    <color name="white">#FFFFFF</color>
-    <color name="black">#000000</color>
-    <color name="colorAccent">#FF4081</color>
-    <color name="cardBackground">#212121</color>
-    <color name="primaryColor">#2196F3</color>
-    <color name="lesson_card_background">#212121</color>
-    <color name="textPrimary">#FFFFFF</color>
-    <color name="primaryDarkColor">#303F9F</color>
-    <color name="textSecondary">#e7e7e7</color>
-    <color name="colorPrimary">#2196F3</color>
-    <color name="linkColor">#1976D2</color>
-    <color name="textHighlight">#ffffff</color>
-    <color name="dark_background">#1A1A1A</color>
-    <color name="grey_300">#E0E0E0</color>
+    <!-- Основные цвета интерфейса (темная тема) -->
+    <color name="primary_color">#2196F3</color>
+    <color name="primary_dark_color">#303F9F</color>
+    <color name="accent_color">#FF4081</color>
+
+    <!-- Текстовые цвета (темная тема) -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#e7e7e7</color>
+    <color name="text_highlight">#ffffff</color>
+    <color name="text_button">#FFFFFF</color>
+
+    <!-- Цвета карточек и фонов (темная тема) -->
     <color name="card_background">#212121</color>
+    <color name="lesson_card_background">#212121</color>
+    <color name="dark_background">#1A1A1A</color>
+    <color name="alarm_background">#1A1A1A</color>
+    <color name="progress_card_background">#212121</color>
+
+    <!-- Цвета элементов UI (темная тема) -->
+    <color name="button_save_background">#FF4081</color>
+    <color name="button_reset_background">#E0E0E0</color>
+    <color name="button_fab_background">#EA4335</color>
     <color name="active_day_background">#37474F</color>
     <color name="border_color">#757575</color>
-    <color name="link_color">#82B1FF</color>
-    <color name="light_gray">#1A1A1A</color>
-    <color name="backroundalarm">#1A1A1A</color>
-    <color name="grey_500">#9E9E9E</color>
-    <color name="teal_100">#B2DFDB</color>
+    <color name="progress_indicator_color">#FFFFFF</color>
+    <color name="progress_track_color">#212121</color>
+
+    <!-- Цвета ссылок (темная тема) -->
+    <color name="link_primary">#1976D2</color>
+    <color name="link_secondary">#82B1FF</color>
+
+    <!-- Серые оттенки (темная тема) -->
+    <color name="grey_1">#E0E0E0</color>
+    <color name="grey_2">#9E9E9E</color>
+
+    <!-- Дополнительные цвета (темная тема) -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="color_1">#B2DFDB</color>
+    <color name="color_2">#03DAC5</color>
+    <color name="color_3">#6200EE</color>
+    <color name="color_4">#3700B3</color>
+    <color name="semi_transparent_background">#33000000</color>
 </resources>

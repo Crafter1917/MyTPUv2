@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@color/dark_background">
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tabLayout"
@@ -12,24 +13,28 @@
         android:layout_height="wrap_content"
         app:tabBackground="@drawable/tab_selector"
         app:tabIndicator="@null"
-        app:tabSelectedTextColor="?attr/colorPrimary"
-        app:tabTextColor="@color/textPrimary" />
+        app:tabSelectedTextColor="@color/text_highlight"
+        app:tabTextColor="@color/text_primary"
+        app:tabRippleColor="@color/primary_color"
+        app:tabIndicatorColor="@color/accent_color"
+        android:background="@color/card_background"/>
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="8dp"/>
+        android:layout_marginTop="8dp"
+        android:background="@color/card_background"/>
 
     <Button
         android:id="@+id/saveButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:backgroundTint="@color/primaryColor"
+        android:backgroundTint="@color/primary_color"
         android:text="Сохранить"
-        android:textColor="@android:color/white"
+        android:textColor="@color/text_button"
         android:textSize="16sp" />
 
 </LinearLayout>

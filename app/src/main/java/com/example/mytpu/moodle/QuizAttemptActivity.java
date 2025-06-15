@@ -36,6 +36,8 @@ import androidx.cardview.widget.CardView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
+import com.example.mytpu.BaseActivity;
+import com.example.mytpu.ColorManager;
 import com.example.mytpu.R;
 
 import org.json.JSONArray;
@@ -71,8 +73,9 @@ import okhttp3.Response;
 import okio.Buffer;
 
 
-public class QuizAttemptActivity extends AppCompatActivity {
+public class QuizAttemptActivity extends BaseActivity {
     private static final String TAG = "QuizAttempt";
+    private ColorManager colorManager;
     private static final String MOODLE_BASE_URL = "https://stud.lms.tpu.ru";
     private final Map<Integer, String> questionHtmlCache = new HashMap<>();
     private Map<Integer, List<Integer>> pageSlotsMap = new HashMap<>();
@@ -98,7 +101,29 @@ public class QuizAttemptActivity extends AppCompatActivity {
             this.value = value;
         }
     }
+    @Override
+    protected void applyCustomColors() {
+        // Обновление цветов динамически созданных элементов
+        updateQuestionColors();
+    }
 
+    private void updateQuestionColors() {
+        for (int i = 0; i < questionsLayout.getChildCount(); i++) {
+            View child = questionsLayout.getChildAt(i);
+            if (child instanceof CardView) {
+                LinearLayout layout = (LinearLayout) ((CardView) child).getChildAt(0);
+                for (int j = 0; j < layout.getChildCount(); j++) {
+                    View innerChild = layout.getChildAt(j);
+                    if (innerChild instanceof TextView) {
+                        TextView tv = (TextView) innerChild;
+                        if ("error".equals(tv.getTag())) {
+                            tv.setTextColor(colorManager.getColor("error_color"));
+                        }
+                    }
+                }
+            }
+        }
+    }
     @SuppressLint("MissingInflatedId")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -933,7 +958,7 @@ public class QuizAttemptActivity extends AppCompatActivity {
                 Log.w(TAG, "No table rows found for matching question");
                 TextView error = new TextView(this);
                 error.setText("Не удалось загрузить варианты ответа");
-                error.setTextColor(Color.RED);
+                error.setTextColor(colorManager.getColor("color_1"));
                 layout.addView(error);
                 return;
             }
@@ -1183,14 +1208,14 @@ public class QuizAttemptActivity extends AppCompatActivity {
     private void addUnsupportedType(LinearLayout layout, String type) {
         TextView unsupported = new TextView(this);
         unsupported.setText("Тип вопроса не поддерживается: " + type);
-        unsupported.setTextColor(Color.RED);
+        unsupported.setTextColor(colorManager.getColor("color_1"));
         layout.addView(unsupported);
     }
 
     private void addErrorText(LinearLayout layout, String message) {
         TextView error = new TextView(this);
         error.setText(message);
-        error.setTextColor(Color.RED);
+        error.setTextColor(colorManager.getColor("color_1"));
         layout.addView(error);
     }
 

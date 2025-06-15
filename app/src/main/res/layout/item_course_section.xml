@@ -7,13 +7,15 @@
     android:layout_margin="8dp"
     app:cardCornerRadius="12dp"
     app:cardElevation="2dp"
-    app:strokeColor="@color/cardBackground"
+    app:cardBackgroundColor="@color/card_background"
+    app:strokeColor="@color/border_color"
     app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="@color/card_background">
 
         <TextView
             android:id="@+id/sectionTitle"
@@ -21,15 +23,17 @@
             android:layout_height="wrap_content"
             android:padding="16dp"
             android:textSize="20sp"
-            android:textColor="@color/textPrimary"
-            android:background="?attr/selectableItemBackground"/>
+            android:textColor="@color/text_primary"
+            android:background="?attr/selectableItemBackground"
+            android:textStyle="bold"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/modulesRecyclerView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="8dp"
-            android:clipToPadding="false"/>
+            android:clipToPadding="false"
+            android:background="@color/dark_background"/>
 
     </LinearLayout>
 

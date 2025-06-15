@@ -5,9 +5,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:layoutDirection="ltr"
     android:fitsSystemWindows="true"
-    android:layout_height="match_parent"
+    android:background="@color/dark_background"
     tools:context=".mailTPU.MailActivity">
 
     <!-- Основной контент -->
@@ -16,17 +17,21 @@
         layout="@layout/content_main" />
 
     <!-- Боковое меню -->
-
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        android:fitsSystemWindows="true">
+        android:fitsSystemWindows="true"
+        android:background="@color/card_background">
+
         <com.google.android.material.navigation.NavigationView
             android:id="@+id/nav_view"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:elevation="16dp"
+            android:background="@color/card_background"
+            app:itemTextColor="@color/text_primary"
+            app:itemIconTint="@color/text_primary"
             app:menu="@menu/nav_menu"/>
     </LinearLayout>
 

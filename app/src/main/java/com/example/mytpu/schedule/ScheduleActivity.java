@@ -1,7 +1,7 @@
 package com.example.mytpu.schedule;
-
+import com.example.mytpu.ColorManager;
+import android.content.res.Configuration;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-
 import android.accounts.Account;
 import android.app.AlarmManager;
 import android.app.AlertDialog;
@@ -128,7 +128,7 @@ public class ScheduleActivity extends AppCompatActivity {
     private List<CardView> dayCards = new ArrayList<>();
     private List<TextView> dayHeaders = new ArrayList<>();
     private List<LinearLayout> lessonContainers = new ArrayList<>();
-
+    private ColorManager colorManager;
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -199,6 +199,9 @@ public class ScheduleActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         checkPermissions();
         setContentView(R.layout.activity_schedule);
+        int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        boolean isNightMode = (nightModeFlags == Configuration.UI_MODE_NIGHT_YES);
+        colorManager = ColorManager.getInstance(this, isNightMode);
         scheduleContainer = findViewById(R.id.scheduleContainer);
         if (scheduleContainer == null) {
             Log.e(TAG, "scheduleContainer not found!");
@@ -1925,8 +1928,7 @@ public class ScheduleActivity extends AppCompatActivity {
         card.setCardElevation(dpToPx(1));
         card.setRadius(dpToPx(6));
         card.setContentPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
-        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.card_background));
-
+        card.setCardBackgroundColor(colorManager.getColor("lesson_card_background"));
         // Основной контейнер
         LinearLayout mainContainer = new LinearLayout(this);
         mainContainer.setOrientation(LinearLayout.VERTICAL);
@@ -1959,7 +1961,7 @@ public class ScheduleActivity extends AppCompatActivity {
         paraNumberView.setText("Пара " + paraNumber);
         paraNumberView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         paraNumberView.setTypeface(null, Typeface.BOLD);
-        paraNumberView.setTextColor(ContextCompat.getColor(this,R.color.textSecondary));
+        paraNumberView.setTextColor(colorManager.getColor("text_secondary"));
 
         leftPart.addView(paraNumberView);
 
@@ -1976,7 +1978,7 @@ public class ScheduleActivity extends AppCompatActivity {
         timeView.setText(time);
         timeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         timeView.setTypeface(null, Typeface.BOLD);
-        timeView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        timeView.setTextColor(colorManager.getColor("text_secondary"));
 
         rightPart.addView(timeView);
 
@@ -2041,7 +2043,7 @@ public class ScheduleActivity extends AppCompatActivity {
             TextView subgroupsView = new TextView(this);
             subgroupsView.setText(subgroups);
             subgroupsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            subgroupsView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            subgroupsView.setTextColor(colorManager.getColor("text_secondary"));
             subgroupsView.setTypeface(null, Typeface.BOLD);
             subgroupsView.setPadding(0, 0, 0, dpToPx(2));
             leftPart.addView(subgroupsView);
@@ -2050,7 +2052,7 @@ public class ScheduleActivity extends AppCompatActivity {
         TextView subjectView = new TextView(this);
         subjectView.setText(subject);
         subjectView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        subjectView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        subjectView.setTextColor(colorManager.getColor("text_primary"));
         subjectView.setTypeface(null, Typeface.BOLD);
         subjectView.setPadding(0, subgroups.isEmpty() ? 0 : dpToPx(2), 0, dpToPx(2));
         leftPart.addView(subjectView);
@@ -2059,7 +2061,7 @@ public class ScheduleActivity extends AppCompatActivity {
             TextView teacherView = new TextView(this);
             teacherView.setText(teacher);
             teacherView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            teacherView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            teacherView.setTextColor(colorManager.getColor("text_secondary"));
             leftPart.addView(teacherView);
         }
 
@@ -2067,7 +2069,7 @@ public class ScheduleActivity extends AppCompatActivity {
         TextView audienceView = new TextView(this);
         audienceView.setText(audience);
         audienceView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        audienceView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        audienceView.setTextColor(colorManager.getColor("text_secondary"));
         audienceView.setGravity(Gravity.END);
 
         topPart.addView(leftPart);
@@ -2079,9 +2081,10 @@ public class ScheduleActivity extends AppCompatActivity {
             TextView typeView = new TextView(this);
             typeView.setText(type);
             typeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-            typeView.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+            typeView.setTextColor(colorManager.getColor("text_primary"));
             typeView.setPadding(0, dpToPx(4), 0, 0);
             mainContainer.addView(typeView);
+            typeView.setBackgroundColor(colorManager.getColor("active_day_background"));
         }
 
         card.addView(mainContainer);

@@ -1,23 +1,24 @@
-<?xml version="1.0" encoding="utf-8"?>
 <androidx.drawerlayout.widget.DrawerLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="true"
+    android:background="@color/dark_background">
 
     <!-- Основной контент -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="@color/dark_background">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="@color/primary_color"
             android:elevation="8dp"
             android:fitsSystemWindows="true"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
@@ -26,9 +27,9 @@
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:background="@color/dark_background">
 
-            <!-- Добавлены ID для элементов -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/progress_card"
                 android:layout_width="match_parent"
@@ -37,14 +38,16 @@
                 android:visibility="gone"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="4dp"
-                app:strokeColor="@color/card_background"
-                app:strokeWidth="1dp">
+                app:strokeColor="@color/border_color"
+                app:strokeWidth="1dp"
+                app:cardBackgroundColor="@color/card_background">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="24dp">
+                    android:padding="24dp"
+                    android:background="@color/card_background">
 
                     <!-- Заголовок -->
                     <TextView
@@ -52,8 +55,9 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Ваш прогресс"
-                        android:textColor="@color/textPrimary"
-                        android:textSize="20sp" />
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold"/>
 
                     <!-- Основной текст -->
                     <TextView
@@ -62,8 +66,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="Вы прошли у нас 2 курса и закрыли их на 23%!"
-                        android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"/>
 
                     <!-- Прогресс-бар -->
                     <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -72,10 +76,10 @@
                         android:layout_height="8dp"
                         android:layout_marginTop="16dp"
                         android:progress="23"
-                        app:indicatorColor="@color/textPrimary"
-                        app:trackColor="@color/cardBackground"
+                        app:indicatorColor="@color/primary_color"
+                        app:trackColor="@color/progress_track_color"
                         app:trackCornerRadius="4dp"
-                        app:trackThickness="8dp" />
+                        app:trackThickness="8dp"/>
 
                     <!-- Дополнительная статистика -->
                     <LinearLayout
@@ -83,21 +87,22 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:orientation="horizontal"
+                        android:background="@color/card_background">
 
                         <View
                             android:layout_width="16dp"
                             android:layout_height="16dp"
                             android:layout_marginEnd="8dp"
-                            android:background="@drawable/progress_dot" />
+                            android:background="@drawable/progress_dot"/>
 
                         <TextView
                             android:id="@+id/stats_text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Лучше чем 33% студентов"
-                            android:textColor="@color/textSecondary"
-                            android:textSize="14sp" />
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp"/>
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -110,13 +115,17 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
-        android:layout_marginTop="?attr/actionBarSize">
+        android:layout_marginTop="?attr/actionBarSize"
+        android:background="@color/card_background">
 
         <com.google.android.material.navigation.NavigationView
             android:id="@+id/nav_view"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:elevation="16dp"
+            android:background="@color/card_background"
+            app:itemTextColor="@color/text_primary"
+            app:itemIconTint="@color/text_primary"
             app:headerLayout="@layout/nav_header"
             app:menu="@menu/nav_dashboard"/>
     </LinearLayout>

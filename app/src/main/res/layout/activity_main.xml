@@ -1,23 +1,32 @@
-<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="true"
+    android:background="@color/dark_background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="8dp">
+        android:padding="8dp"
+        android:background="@color/dark_background">
 
         <!-- Поле для имени пользователя -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
-            app:errorEnabled="true">
+            app:errorEnabled="true"
+            app:boxStrokeColor="@color/primary_color"
+            app:hintTextColor="@color/text_secondary"
+            app:boxBackgroundColor="@color/card_background"
+            app:boxBackgroundMode="outline"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxCornerRadiusBottomStart="8dp"
+            app:boxCornerRadiusBottomEnd="8dp">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/username"
@@ -25,7 +34,8 @@
                 android:layout_height="wrap_content"
                 android:hint="Имя пользователя"
                 android:inputType="textEmailAddress"
-                android:maxLines="1"/>
+                android:maxLines="1"
+                android:textColor="@color/text_primary"/>
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- Поле для пароля -->
@@ -34,7 +44,16 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="24dp"
             app:errorEnabled="true"
-            app:passwordToggleEnabled="true">
+            app:passwordToggleEnabled="true"
+            app:boxStrokeColor="@color/primary_color"
+            app:hintTextColor="@color/text_secondary"
+            app:boxBackgroundColor="@color/card_background"
+            app:boxBackgroundMode="outline"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxCornerRadiusBottomStart="8dp"
+            app:boxCornerRadiusBottomEnd="8dp"
+            app:passwordToggleTint="@color/text_primary">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/password"
@@ -42,7 +61,8 @@
                 android:layout_height="wrap_content"
                 android:hint="Пароль"
                 android:inputType="textPassword"
-                android:maxLines="1"/>
+                android:maxLines="1"
+                android:textColor="@color/text_primary"/>
         </com.google.android.material.textfield.TextInputLayout>
 
         <!-- Кнопка входа -->
@@ -52,9 +72,14 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:text="Войти"
+            android:textColor="@color/text_button"
             app:cornerRadius="8dp"
             app:icon="@drawable/ic_send_24dp"
+            app:iconTint="@color/text_button"
             app:iconGravity="start"
+            app:strokeColor="@color/border_color"
+            app:strokeWidth="1dp"
+            android:backgroundTint="@color/primary_color"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
 
         <!-- Логи -->
@@ -62,18 +87,23 @@
             android:layout_width="match_parent"
             android:layout_height="200dp"
             app:cardElevation="4dp"
-            app:cardCornerRadius="8dp">
+            app:cardCornerRadius="8dp"
+            app:cardBackgroundColor="@color/card_background"
+            app:strokeColor="@color/border_color"
+            app:strokeWidth="1dp">
 
             <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
-                android:layout_height="match_parent">
+                android:layout_height="match_parent"
+                android:background="@color/card_background">
 
                 <TextView
                     android:id="@+id/logTextView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="8dp"
-                    android:textSize="12sp"/>
+                    android:textSize="12sp"
+                    android:textColor="@color/text_secondary"/>
             </androidx.core.widget.NestedScrollView>
         </com.google.android.material.card.MaterialCardView>
 

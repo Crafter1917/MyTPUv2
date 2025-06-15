@@ -14,7 +14,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
@@ -66,29 +65,50 @@ public class MainActivity extends BaseActivity
 
     @Override
     protected void applyCustomColors() {
-        // Применяем цвета к элементам, которые всегда есть в MainActivity
+        ColorManager colorManager = ColorManager.getInstance(this, isNightMode);
+
+        // Применяем цвета к элементам
         NavigationView navView = findViewById(R.id.nav_view);
         if (navView != null) {
-            navView.setBackgroundColor(colorManager.getColor("cardBackground"));
+            navView.setBackgroundColor(colorManager.getColor("card_background"));
 
-            // Обновляем цвет текста в хидере
             View headerView = navView.getHeaderView(0);
             if (headerView != null) {
                 TextView emailTextView = headerView.findViewById(R.id.textViewEmail);
-                emailTextView.setTextColor(colorManager.getColor("textPrimary"));
+                emailTextView.setTextColor(colorManager.getColor("text_primary"));
             }
         }
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         if (toolbar != null) {
-            toolbar.setBackgroundColor(colorManager.getColor("primaryColor"));
+            toolbar.setBackgroundColor(colorManager.getColor("primary_color"));
         }
 
-        // Если есть карточка прогресса, применяем её цвета
         MaterialCardView card = findViewById(R.id.progress_card);
         if (card != null) {
             card.setCardBackgroundColor(colorManager.getColor("card_background"));
             card.setStrokeColor(colorManager.getColor("border_color"));
+
+            TextView progressTitle = findViewById(R.id.progress_title);
+            if (progressTitle != null) {
+                progressTitle.setTextColor(colorManager.getColor("text_primary"));
+            }
+
+            TextView progressText = findViewById(R.id.progress_text);
+            if (progressText != null) {
+                progressText.setTextColor(colorManager.getColor("text_primary"));
+            }
+
+            TextView statsText = findViewById(R.id.stats_text);
+            if (statsText != null) {
+                statsText.setTextColor(colorManager.getColor("text_secondary"));
+            }
+
+            LinearProgressIndicator progressBar = findViewById(R.id.progress_bar);
+            if (progressBar != null) {
+                progressBar.setIndicatorColor(colorManager.getColor("progress_indicator_color"));
+                progressBar.setTrackColor(colorManager.getColor("progress_track_color"));
+            }
         }
     }
 

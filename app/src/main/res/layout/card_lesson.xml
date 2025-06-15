@@ -7,7 +7,8 @@
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     app:cardCornerRadius="16dp"
-    app:cardElevation="4dp">
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@color/card_background">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,6 +16,15 @@
         android:background="?attr/selectableItemBackground"
         android:orientation="vertical"
         android:padding="12dp">
+
+        <TextView
+            android:id="@+id/tvSubgroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:textStyle="italic"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone"/>
 
         <!-- Заголовок с названием предмета -->
         <TextView
@@ -24,7 +34,8 @@
             android:layout_marginBottom="8dp"
             android:paddingHorizontal="8dp"
             android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:textColor="@color/text_primary" />
 
         <!-- Время занятия -->
         <LinearLayout
@@ -40,13 +51,13 @@
                 android:layout_height="24dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_time"
-                app:tint="?android:attr/textColorSecondary" />
+                app:tint="@color/text_secondary" />
 
             <TextView
                 android:id="@+id/tvTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="?android:attr/textColorSecondary" />
+                android:textColor="@color/text_secondary" />
         </LinearLayout>
 
         <!-- Преподаватель -->
@@ -63,12 +74,13 @@
                 android:layout_height="24dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_person"
-                app:tint="?android:attr/textColorSecondary" />
+                app:tint="@color/text_secondary" />
 
             <TextView
                 android:id="@+id/tvTeacher"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary" />
         </LinearLayout>
 
         <!-- Аудитория -->
@@ -84,12 +96,13 @@
                 android:layout_height="24dp"
                 android:layout_marginEnd="8dp"
                 android:src="@drawable/ic_room"
-                app:tint="?android:attr/textColorSecondary" />
+                app:tint="@color/text_secondary" />
 
             <TextView
                 android:id="@+id/tvAudience"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary" />
         </LinearLayout>
 
         <!-- Тип занятия (с цветным фоном) -->
@@ -98,7 +111,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/rounded_bg"
-            android:backgroundTint="#E0E0E0"
+            android:backgroundTint="@color/grey_1"
+            android:textColor="@color/text_primary"
             android:paddingHorizontal="8dp"
             android:textAllCaps="true"
             android:textSize="14sp" />

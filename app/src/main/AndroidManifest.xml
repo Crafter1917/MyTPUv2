@@ -37,7 +37,6 @@
         android:hardwareAccelerated="true"
         tools:targetApi="31">
         <profileable android:shell="true" />
-        <receiver android:name=".schedule.BreakNotificationReceiver" />
         <receiver
             android:name=".mailTPU.MailReceiver"
             android:enabled="true"
@@ -62,10 +61,6 @@
                 <action android:name="android.intent.action.MAIN" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".moodle.NotificationsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.MyTPU" />
         <activity
             android:name=".moodle.QuizAttemptActivity"
             android:label="Тест"

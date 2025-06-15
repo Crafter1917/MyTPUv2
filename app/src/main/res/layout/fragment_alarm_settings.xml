@@ -1,21 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-   android:layout_width="match_parent"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@color/dark_background">
 
     <LinearLayout
         xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="@color/card_background"
+        android:padding="16dp">
 
         <!-- Звук будильника -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Звук будильника"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:layout_marginBottom="8dp"/>
 
@@ -23,15 +26,16 @@
             android:id="@+id/btnSelectSound"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Выбрать мелодию"/>
-
+            android:text="Выбрать мелодию"
+            android:backgroundTint="@color/primary_color"
+            android:textColor="@color/text_button"/>
 
         <!-- Время срабатывания -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/text_primary"
             android:text="За сколько сработает будильник:"
             android:textSize="16sp"/>
 
@@ -61,7 +65,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Будильник"
-                    android:textColor="?android:attr/textColorPrimary"
+                    android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:gravity="start|center_vertical"/>
 
@@ -69,7 +73,9 @@
                     android:id="@+id/switchAlarm"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:checked="true"/>
+                    android:checked="true"
+                    android:thumbTint="@color/accent_color"
+                    android:trackTint="@color/grey_1"/>
             </LinearLayout>
 
             <LinearLayout
@@ -83,7 +89,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Уведомления"
-                    android:textColor="?android:attr/textColorPrimary"
+                    android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:gravity="start|center_vertical"/>
 
@@ -92,6 +98,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checked="true"
+                    android:thumbTint="@color/accent_color"
+                    android:trackTint="@color/grey_1"
                     tools:ignore="UseSwitchCompatOrMaterialXml" />
             </LinearLayout>
         </LinearLayout>

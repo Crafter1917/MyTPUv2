@@ -5,135 +5,145 @@
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="true"
+    android:background="@color/dark_background">
 
     <!-- Основной контент -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:background="@color/dark_background">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="@color/primary_color"
             android:elevation="8dp"
             android:fitsSystemWindows="true"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
-<RelativeLayout
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:padding="16dp">
-    <TextView
-        android:id="@+id/dashboardTextView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:text="Загрузка данных..."
-        android:textSize="16sp" />
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone" />
-    <!-- Основное содержимое страницы -->
-    <ScrollView
-        android:id="@+id/main_scroll_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="8dp">
 
-        <LinearLayout
+        <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:layout_height="match_parent"
+            android:fitsSystemWindows="true"
+            android:padding="16dp"
+            android:background="@color/dark_background">
 
-            <!-- Заголовок страницы -->
             <TextView
-                android:id="@+id/welcomeTextView"
+                android:id="@+id/dashboardTextView"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="ЛИЧНЫЙ КАБИНЕТ"
-                android:tag="color:textHighlight"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:layout_marginBottom="12dp"
-                android:textSize="24sp" />
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:text="Загрузка данных..."
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"/>
 
-            <!-- Оповещения -->
-            <TextView
-                android:id="@+id/notification_title"
+            <ProgressBar
+                android:id="@+id/progressBar"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Уведомления"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:visibility="gone"
+                android:indeterminateTint="@color/progress_indicator_color"/>
 
-            <TextView
-                android:id="@+id/notificationTextView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Нет новых уведомлений"
-                android:textColor="@android:color/darker_gray" />
-
-            <!-- Ссылки на курсы и ресурсы -->
-            <TextView
-                android:id="@+id/course_overview_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Обзор курсов"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp" />
-
-            <LinearLayout
-                android:id="@+id/coursesContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-            </LinearLayout>
-
-
-
-            <!-- Недавно посещенные курсы -->
-            <TextView
-                android:id="@+id/recent_courses_title"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Недавно посещенные курсы"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="8dp">
-
-                <LinearLayout
-                    android:id="@+id/recentcoursesContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-                </LinearLayout>
-
-
-
-
-            </LinearLayout>
-            <TextView
-                android:id="@+id/logTextView"
+            <!-- Основное содержимое страницы -->
+            <ScrollView
+                android:id="@+id/main_scroll_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:hint="логи" />
-        </LinearLayout>
+                android:layout_marginTop="8dp"
+                android:background="@color/dark_background">
 
-    </ScrollView>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@color/dark_background">
 
-</RelativeLayout>
+                    <!-- Заголовок страницы -->
+                    <TextView
+                        android:id="@+id/welcomeTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="ЛИЧНЫЙ КАБИНЕТ"
+                        android:textStyle="bold"
+                        android:gravity="center"
+                        android:layout_marginBottom="12dp"
+                        android:textSize="24sp"
+                        android:textColor="@color/text_highlight"/>
 
+                    <!-- Оповещения -->
+                    <TextView
+                        android:id="@+id/notification_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Уведомления"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp"
+                        android:textColor="@color/text_primary"/>
+
+                    <TextView
+                        android:id="@+id/notificationTextView"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Нет новых уведомлений"
+                        android:textColor="@color/text_secondary"/>
+
+                    <!-- Ссылки на курсы и ресурсы -->
+                    <TextView
+                        android:id="@+id/course_overview_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Обзор курсов"
+                        android:textStyle="bold"
+                        android:layout_marginTop="16dp"
+                        android:textColor="@color/text_primary"/>
+
+                    <LinearLayout
+                        android:id="@+id/coursesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:background="@color/dark_background">
+                    </LinearLayout>
+
+                    <!-- Недавно посещенные курсы -->
+                    <TextView
+                        android:id="@+id/recent_courses_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Недавно посещенные курсы"
+                        android:textStyle="bold"
+                        android:layout_marginTop="16dp"
+                        android:textColor="@color/text_primary"/>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="8dp"
+                        android:background="@color/dark_background">
+
+                        <LinearLayout
+                            android:id="@+id/recentcoursesContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:background="@color/dark_background">
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/logTextView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:hint="логи"
+                        android:textColor="@color/text_secondary"/>
+                </LinearLayout>
+            </ScrollView>
+        </RelativeLayout>
     </LinearLayout>
 
     <!-- Обертка для NavigationView -->
@@ -142,16 +152,17 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
-        android:layout_marginTop="?attr/actionBarSize">
+        android:layout_marginTop="?attr/actionBarSize"
+        android:background="@color/card_background">
 
         <com.google.android.material.navigation.NavigationView
             android:id="@+id/nav_view"
             android:layout_width="180dp"
             android:layout_height="match_parent"
             android:elevation="16dp"
-
+            android:background="@color/card_background"
+            app:itemTextColor="@color/text_primary"
+            app:itemIconTint="@color/text_primary"
             app:menu="@menu/nav_dashboard"/>
-
     </LinearLayout>
-
 </androidx.drawerlayout.widget.DrawerLayout>

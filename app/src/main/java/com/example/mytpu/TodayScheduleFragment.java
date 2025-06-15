@@ -101,8 +101,9 @@ public class TodayScheduleFragment extends Fragment {
     }
 
     private void displayLessons(List<ScheduleActivity.LessonData> lessons) {
-        scheduleContainer.removeAllViews(); // Очищаем контейнер перед добавлением
+        scheduleContainer.removeAllViews();
         LayoutInflater inflater = LayoutInflater.from(requireContext());
+        ColorManager colorManager = ColorManager.getInstance(requireContext(), false);
 
         for (ScheduleActivity.LessonData lesson : lessons) {
             View lessonCard = ScheduleCardHelper.createLessonCard(
@@ -112,7 +113,8 @@ public class TodayScheduleFragment extends Fragment {
                     lesson.audience,
                     lesson.type,
                     lesson.teacher,
-                    lesson.time
+                    lesson.time,
+                    colorManager  // Передаем ColorManager
             );
             scheduleContainer.addView(lessonCard);
         }

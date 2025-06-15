@@ -4,13 +4,15 @@
     android:layout_width="match_parent"
     android:fitsSystemWindows="true"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:background="@color/dark_background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="16dp"
+        android:background="@color/dark_background">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -22,21 +24,26 @@
                 style="?android:attr/progressBarStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:visibility="gone"/>
+                android:visibility="gone"
+                android:indeterminateTint="@color/progress_indicator_color"/>
 
             <Button
                 android:id="@+id/attachButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Добавьте файл" />
+                android:text="Добавьте файл"
+                android:textColor="@color/text_button"
+                android:backgroundTint="@color/button_save_background"/>
 
             <Button
                 android:id="@+id/sendButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Отправить" />
+                android:text="Отправить"
+                android:textColor="@color/text_button"
+                android:backgroundTint="@color/button_save_background"/>
         </LinearLayout>
 
         <EditText
@@ -44,24 +51,29 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Кому"
-            android:inputType="textEmailAddress" />
+            android:inputType="textEmailAddress"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"/>
 
         <EditText
             android:id="@+id/subjectEditText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Тема" />
+            android:hint="Тема"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"/>
 
         <!-- Контейнер для вложений -->
-
         <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:background="@color/dark_background">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" >
+                android:orientation="vertical"
+                android:background="@color/dark_background">
 
                 <EditText
                     android:id="@+id/bodyEditText"
@@ -71,26 +83,29 @@
                     android:gravity="top"
                     android:hint="Сообщение"
                     android:inputType="textMultiLine"
-                    android:minHeight="200dp" />
+                    android:minHeight="200dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_secondary"/>
 
                 <WebView
                     android:id="@+id/bodyWebView"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="match_parent"/>
 
                 <TextView
                     android:id="@+id/textView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Вложения:" />
+                    android:text="Вложения:"
+                    android:textColor="@color/text_primary"/>
 
                 <LinearLayout
                     android:id="@+id/attachmentsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical"
+                    android:background="@color/dark_background"/>
             </LinearLayout>
         </ScrollView>
-
     </LinearLayout>
 </ScrollView>

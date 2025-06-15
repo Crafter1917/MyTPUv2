@@ -4,7 +4,7 @@
     android:shape="oval">
 
     <!-- Цвет точки -->
-    <solid android:color="@color/textPrimary"/> <!-- Используйте ваш основной цвет -->
+    <solid android:color="@color/text_primary"/> <!-- Используйте ваш основной цвет -->
 
     <!-- Размеры -->
     <size

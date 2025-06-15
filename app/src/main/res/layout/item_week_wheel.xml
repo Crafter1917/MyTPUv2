@@ -5,16 +5,18 @@
     android:layout_width="120dp"
     android:layout_height="80dp"
     app:cardCornerRadius="16dp"
-    app:cardElevation="2dp"
-    app:cardUseCompatPadding="true">
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@color/card_background"
+    app:strokeColor="@color/border_color"
+    app:strokeWidth="1dp"
+    android:layout_margin="4dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
-        android:background="@drawable/card"
         android:orientation="vertical"
-        >
+        android:background="?attr/selectableItemBackground">
 
         <TextView
             android:id="@+id/weekText"
@@ -22,8 +24,17 @@
             android:layout_height="wrap_content"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:text=""/>
+            android:textColor="@color/text_primary"
+            android:text="Пн"/>
 
+        <TextView
+            android:id="@+id/dateText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            android:layout_marginTop="4dp"
+            android:text="12.09"/>
     </LinearLayout>
 
 </androidx.cardview.widget.CardView>

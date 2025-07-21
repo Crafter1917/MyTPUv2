@@ -12,15 +12,12 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
-import android.text.Html;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
-import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.webkit.CookieManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -33,7 +30,6 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
@@ -42,14 +38,11 @@ import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
-
 import com.example.mytpu.R;
-
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -61,12 +54,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import okhttp3.Cookie;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -110,8 +99,6 @@ public class EmailDetailActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        RoundcubeAPI.clearCache(this);
         setContentView(R.layout.activity_email_detail);
         context = this;
         webView = findViewById(R.id.webView);
@@ -136,6 +123,13 @@ public class EmailDetailActivity extends AppCompatActivity {
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute(() -> {
                 try {
+                    // Проверка валидности сессии перед загрузкой
+                    if (!MailActivity.isSessionValid(this)) {
+                        if (!MailActivity.forceReauthenticate(this)) {
+                            runOnUiThread(() -> finish());
+                            return;
+                        }
+                    }
                     String content = RoundcubeAPI.fetchEmailContent(
                             EmailDetailActivity.this,
                             emailId,
@@ -158,15 +152,22 @@ public class EmailDetailActivity extends AppCompatActivity {
                             showHtml(content);
                         }
                     });
-                } catch (IOException e) {
+                } catch (Exception e) {
                     runOnUiThread(() -> {
-                        if (!isDestroyed()) {
+                        // Проверяем тип исключения
+                        if (e instanceof MailActivity.SessionExpiredException) {
+                            allowRemoteButton.setVisibility(View.GONE);
+                            webView.loadData("<h3>Ошибка сессии. Пожалуйста, перезайдите в приложение.</h3>",
+                                    "text/html", "UTF-8");
+                        } else if (e instanceof IOException) {
                             Toast.makeText(this, "Ошибка загрузки", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(this, "Неизвестная ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
                         }
                     });
-                }
-            });
-        }
+            }
+        });
+    }
         // Установка данных на экран
         if (subject != null) subjectTextView.setText(subject);
         if (from != null) senderTextView.setText(from);
@@ -329,9 +330,12 @@ public class EmailDetailActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        RoundcubeAPI.clearCache(this);
         FileLogger.close();
         super.onDestroy();
+        if (webView != null) {
+            webView.stopLoading();
+            webView.destroy();
+        }
     }
 
     
@@ -340,6 +344,9 @@ public class EmailDetailActivity extends AppCompatActivity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        // В EmailDetailActivity добавить:
+        webView.getSettings().setRenderPriority(WebSettings.RenderPriority.HIGH);
+        webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setAllowFileAccess(true);
 

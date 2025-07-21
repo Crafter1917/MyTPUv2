@@ -1,5 +1,8 @@
 package com.example.mytpu;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -53,7 +56,8 @@ public class CoursesProgressFragment extends Fragment {
     private static final String CACHE_KEY = "courses_progress_cache";
     private static final long CACHE_EXPIRATION = 30 * 60 * 1000; // 30 минут
     private static final int NETWORK_TIMEOUT = 15; // секунд
-    private RecyclerView coursesRecyclerView;
+    private LinearLayout coursesLinearLayout; // Заменяем RecyclerView на LinearLayout
+
     private ProgressBar loadingProgressBar;
     private ProgressBar overallProgressBar;
     private TextView overallProgressText;
@@ -89,14 +93,14 @@ public class CoursesProgressFragment extends Fragment {
         }
     }
 
-    @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_courses_progress, container, false);
 
-        coursesRecyclerView = view.findViewById(R.id.coursesRecyclerView);
+        // Изменяем инициализацию на coursesLinearLayout
+        coursesLinearLayout = view.findViewById(R.id.coursesLinearLayout);
         loadingProgressBar = view.findViewById(R.id.loadingProgressBar);
         overallProgressBar = view.findViewById(R.id.overallProgressBar);
         overallProgressText = view.findViewById(R.id.overallProgressText);
@@ -104,9 +108,15 @@ public class CoursesProgressFragment extends Fragment {
         expandIcon = view.findViewById(R.id.expandIcon);
         headerContainer = view.findViewById(R.id.headerContainer);
 
-        // Исправленная строка: добавлен null для слушателя
-        coursesRecyclerView.setAdapter(new CourseProgressAdapter(new ArrayList<>(), null));
-        coursesRecyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+        // Убираем настройки RecyclerView
+        coursesLinearLayout.setOrientation(LinearLayout.VERTICAL);
+
+        // Изначально сворачиваем список
+        coursesLinearLayout.setVisibility(View.GONE);
+        ViewGroup.LayoutParams params = coursesLinearLayout.getLayoutParams();
+        params.height = 0;
+        coursesLinearLayout.setLayoutParams(params);
+        expandIcon.setRotation(0);
 
         headerContainer.setOnClickListener(v -> toggleExpansion());
         loadCoursesProgress();
@@ -114,23 +124,62 @@ public class CoursesProgressFragment extends Fragment {
         return view;
     }
 
+    private void expandList() {
+        coursesLinearLayout.setVisibility(View.VISIBLE);
+        coursesLinearLayout.post(() -> {
+            if (!isExpanded) return;
+
+            // Измеряем целевую высоту
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(
+                    coursesLinearLayout.getWidth(),
+                    View.MeasureSpec.EXACTLY
+            );
+            int heightSpec = View.MeasureSpec.makeMeasureSpec(
+                    0,
+                    View.MeasureSpec.UNSPECIFIED
+            );
+            coursesLinearLayout.measure(widthSpec, heightSpec);
+            int targetHeight = coursesLinearLayout.getMeasuredHeight();
+
+            ValueAnimator animator = ValueAnimator.ofInt(0, targetHeight);
+            animator.addUpdateListener(animation -> {
+                int value = (int) animation.getAnimatedValue();
+                ViewGroup.LayoutParams params = coursesLinearLayout.getLayoutParams();
+                params.height = value;
+                coursesLinearLayout.setLayoutParams(params);
+            });
+            animator.setDuration(300);
+            animator.start();
+        });
+    }
+
+    private void collapseList() {
+        int startHeight = coursesLinearLayout.getHeight();
+        ValueAnimator animator = ValueAnimator.ofInt(startHeight, 0);
+        animator.addUpdateListener(animation -> {
+            int value = (int) animation.getAnimatedValue();
+            ViewGroup.LayoutParams params = coursesLinearLayout.getLayoutParams();
+            params.height = value;
+            coursesLinearLayout.setLayoutParams(params);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                coursesLinearLayout.setVisibility(View.GONE);
+            }
+        });
+        animator.setDuration(300);
+        animator.start();
+    }
+
     private void toggleExpansion() {
         isExpanded = !isExpanded;
+        expandIcon.setRotation(isExpanded ? 180 : 0);
 
         if (isExpanded) {
-            expandIcon.setRotation(180); // Поворачиваем иконку
-            coursesRecyclerView.setVisibility(View.VISIBLE);
-            coursesRecyclerView.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-            ));
+            expandList();
         } else {
-            expandIcon.setRotation(0);
-            coursesRecyclerView.setVisibility(View.GONE);
-            coursesRecyclerView.setLayoutParams(new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    0
-            ));
+            collapseList();
         }
     }
 
@@ -169,6 +218,9 @@ public class CoursesProgressFragment extends Fragment {
 
             try {
                 JSONObject userInfo = getSiteInfo(token);
+                // Проверяем прерывание после первого запроса
+                if (Thread.interrupted()) throw new InterruptedException();
+
                 if (userInfo == null || isDestroyed || !isAdded()) return;
 
                 int userId = userInfo.getInt("userid");
@@ -182,30 +234,26 @@ public class CoursesProgressFragment extends Fragment {
                 if (getActivity() == null || isDestroyed || !isAdded()) return;
 
                 requireActivity().runOnUiThread(() -> {
-                    // Двойная проверка перед обновлением UI
-                    if (getActivity() == null || isDestroyed || !isAdded()) return;
-
+                    if (isDestroyed || !isAdded()) return;
                     loadingProgressBar.setVisibility(View.GONE);
                     updateUI(courses);
                 });
+            } catch (InterruptedException | InterruptedIOException e) {
+                Log.d(TAG, "Loading cancelled");
             } catch (Exception e) {
                 Log.e(TAG, "Error loading courses", e);
-
-                // Проверяем уничтожение перед показом кэша
                 if (getActivity() == null || isDestroyed || !isAdded()) return;
 
                 // Показываем кэш при ошибке
                 if (cachedCourses != null && !cachedCourses.isEmpty()) {
                     requireActivity().runOnUiThread(() -> {
-                        if (getActivity() == null || isDestroyed || !isAdded()) return;
-
+                        if (isDestroyed || !isAdded()) return;
                         loadingProgressBar.setVisibility(View.GONE);
                         updateUI(cachedCourses);
                     });
                 } else {
                     requireActivity().runOnUiThread(() -> {
-                        if (getActivity() == null || isDestroyed || !isAdded()) return;
-
+                        if (isDestroyed || !isAdded()) return;
                         loadingProgressBar.setVisibility(View.GONE);
                         coursesCountText.setText("Ошибка загрузки");
                     });
@@ -254,6 +302,9 @@ public class CoursesProgressFragment extends Fragment {
 
     private JSONObject getSiteInfo(String token) throws IOException, JSONException {
         try {
+            // Проверка прерывания перед запросом
+            if (Thread.interrupted()) throw new InterruptedException();
+
             HttpUrl url = HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
                     .addQueryParameter("wstoken", token)
                     .addQueryParameter("wsfunction", "core_webservice_get_site_info")
@@ -262,29 +313,36 @@ public class CoursesProgressFragment extends Fragment {
 
             Request request = new Request.Builder().url(url).build();
 
-            // Добавляем проверку прерывания перед выполнением запроса
-            if (Thread.interrupted()) {
-                throw new InterruptedException();
-            }
+            // Выполняем запрос с явной проверкой прерывания
+            Response response = null;
+            try {
+                response = client.newCall(request).execute();
 
-            try (Response response = client.newCall(request).execute()) {
-                // Проверка на прерывание потока после выполнения
-                if (Thread.interrupted()) {
-                    throw new InterruptedException();
-                }
+                // Проверяем прерывание после получения ответа
+                if (Thread.interrupted()) throw new InterruptedException();
 
                 String responseBody = response.body().string();
+
+                // Дополнительная проверка после чтения тела ответа
+                if (Thread.interrupted()) throw new InterruptedException();
+
                 return new JSONObject(responseBody);
+            } finally {
+                if (response != null && response.body() != null) {
+                    response.body().close(); // Закрываем тело ответа явно
+                }
             }
         } catch (InterruptedException e) {
-            // Ловим прерывание и возвращаем null вместо выброса исключения
-            Log.d(TAG, "Request interrupted", e);
-            return null;
+            Log.d(TAG, "Site info request interrupted", e);
+            throw new InterruptedIOException();
         }
     }
 
     private List<Course> getCourses(String token, int userId) throws IOException, JSONException {
         try {
+            // Проверка прерывания перед созданием запроса
+            if (Thread.interrupted()) throw new InterruptedException();
+
             HttpUrl coursesUrl = HttpUrl.parse(WEB_SERVICE_URL).newBuilder()
                     .addQueryParameter("wstoken", token)
                     .addQueryParameter("wsfunction", "core_enrol_get_users_courses")
@@ -293,8 +351,19 @@ public class CoursesProgressFragment extends Fragment {
                     .build();
 
             Request coursesRequest = new Request.Builder().url(coursesUrl).build();
-            try (Response response = client.newCall(coursesRequest).execute()) {
+
+            // Выполняем запрос с явной проверкой прерывания
+            Response response = null;
+            try {
+                response = client.newCall(coursesRequest).execute();
+
+                // Проверяем прерывание после получения ответа
+                if (Thread.interrupted()) throw new InterruptedException();
+
                 String responseBody = response.body().string();
+
+                // Дополнительная проверка после чтения тела ответа
+                if (Thread.interrupted()) throw new InterruptedException();
 
                 // Проверка на ошибку API
                 if (responseBody.trim().startsWith("{")) {
@@ -305,9 +374,14 @@ public class CoursesProgressFragment extends Fragment {
                 }
 
                 return parseCourses(new JSONArray(responseBody));
+            } finally {
+                if (response != null && response.body() != null) {
+                    response.body().close(); // Закрываем тело ответа явно
+                }
             }
-        } catch (JSONException e) {
-            throw new IOException("Invalid response format", e);
+        } catch (InterruptedException e) {
+            Log.d(TAG, "Course request interrupted", e);
+            throw new InterruptedIOException();
         }
     }
 
@@ -315,11 +389,12 @@ public class CoursesProgressFragment extends Fragment {
         List<Course> courses = new ArrayList<>();
         for (int i = 0; i < coursesJson.length(); i++) {
             JSONObject course = coursesJson.getJSONObject(i);
-            String name = course.getString("fullname");
+            // Используем optString с fallback на "name"
+            String name = course.optString("fullname", course.optString("name", "Без названия"));
             int id = course.getInt("id");
             int progress = 0;
             if (course.has("progress") && !course.isNull("progress")) {
-                progress = course.getInt("progress");
+                progress = course.optInt("progress", 0);
             }
             courses.add(new Course(name, "", id, progress));
         }
@@ -328,11 +403,15 @@ public class CoursesProgressFragment extends Fragment {
 
     private void updateUI(List<Course> courses) {
         if (isDestroyed) return;
+
+        // Очищаем контейнер перед обновлением
+        coursesLinearLayout.removeAllViews();
+
         if (courses == null || courses.isEmpty()) {
             coursesCountText.setText("Нет активных курсов");
             overallProgressBar.setProgress(0);
             overallProgressText.setText("Общий прогресс: 0%");
-            coursesRecyclerView.setVisibility(View.GONE);
+            coursesLinearLayout.setVisibility(View.GONE);
             return;
         }
 
@@ -347,75 +426,34 @@ public class CoursesProgressFragment extends Fragment {
         overallProgressText.setText(String.format(Locale.getDefault(), "Общий прогресс: %d%%", roundedProgress));
         coursesCountText.setText(String.format(Locale.getDefault(), "Курсов: %d", courses.size()));
 
-        // Обновляем адаптер с передачей слушателя
-        CourseProgressAdapter adapter = new CourseProgressAdapter(courses, course -> {
-            try {
-                Intent intent = new Intent(requireActivity(), CourseActivity.class);
-                intent.putExtra("courseId", course.getId());
-                intent.putExtra("courseName", course.getName());
-                startActivity(intent);
-            } catch (Exception e) {
-                Log.e("CoursesProgressFragment", "Error opening course", e);
-                Toast.makeText(requireContext(), "Ошибка открытия курса", Toast.LENGTH_SHORT).show();
-            }
-        });
+        // Динамически создаем элементы курсов
+        LayoutInflater inflater = LayoutInflater.from(requireContext());
+        for (Course course : courses) {
+            View courseView = inflater.inflate(R.layout.item_course_progress, coursesLinearLayout, false);
 
-        coursesRecyclerView.setAdapter(adapter);
-    }
+            TextView courseName = courseView.findViewById(R.id.courseName);
+            ProgressBar progressBar = courseView.findViewById(R.id.progressBar);
+            TextView progressText = courseView.findViewById(R.id.progressText);
 
-    private static class CourseProgressAdapter extends RecyclerView.Adapter<CourseProgressAdapter.ViewHolder> {
-        private final List<Course> courses;
-        private final OnCourseClickListener listener; // Добавлено поле
-        public interface OnCourseClickListener {
-            void onCourseClick(Course course);
-        }
-        public CourseProgressAdapter(List<Course> courses, OnCourseClickListener listener) {
-            this.courses = courses;
-            this.listener = listener;
-        }
-
-        @NonNull
-        @Override
-        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View view = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_course_progress, parent, false);
-            return new ViewHolder(view);
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            Course course = courses.get(position);
-            if (course == null) return;
-
-            holder.courseName.setText(course.getName() != null ? course.getName() : "Без названия");
+            courseName.setText(course.getName() != null ? course.getName() : "Без названия");
 
             int progress = Math.max(0, Math.min(course.getProgress(), 100));
-            holder.progressBar.setProgress(progress);
-            holder.progressText.setText(String.format(Locale.getDefault(), "%d%%", progress));
+            progressBar.setProgress(progress);
+            progressText.setText(String.format(Locale.getDefault(), "%d%%", progress));
 
-            holder.itemView.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onCourseClick(course);
+            courseView.setOnClickListener(v -> {
+                try {
+                    Intent intent = new Intent(requireActivity(), CourseActivity.class);
+                    intent.putExtra("courseId", course.getId());
+                    intent.putExtra("courseName", course.getName());
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e("CoursesProgressFragment", "Error opening course", e);
+                    Toast.makeText(requireContext(), "Ошибка открытия курса", Toast.LENGTH_SHORT).show();
                 }
             });
-        }
 
-        @Override
-        public int getItemCount() {
-            return courses.size();
-        }
-
-        static class ViewHolder extends RecyclerView.ViewHolder {
-            TextView courseName;
-            ProgressBar progressBar;
-            TextView progressText;
-
-            public ViewHolder(View view) {
-                super(view);
-                courseName = view.findViewById(R.id.courseName);
-                progressBar = view.findViewById(R.id.progressBar);
-                progressText = view.findViewById(R.id.progressText);
-            }
+            coursesLinearLayout.addView(courseView);
         }
     }
 }

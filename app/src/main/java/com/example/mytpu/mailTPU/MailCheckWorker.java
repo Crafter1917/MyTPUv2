@@ -1,5 +1,6 @@
 package com.example.mytpu.mailTPU;
 
+
 import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -29,6 +30,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -37,16 +39,39 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import javax.net.ssl.SSLHandshakeException;
+
 import okhttp3.OkHttpClient;
 
 public class MailCheckWorker extends Worker {
     private static final String TAG = "MailCheckWorker";
     public static final String CHANNEL_ID = "mail_channel";
-    private static final int NOTIFICATION_ID = 1;
     public static final String PREFS_NAME = "mail_prefs";
     public static final String KEY_LAST_UIDS = "last_uids";
-    private static final Object AUTH_LOCK = new Object();
+    public static final String KEY_LAST_UIDS_PREFIX = "last_uids_";
 
+    private static final Object GLOBAL_AUTH_LOCK = new Object();
+    private boolean isCertificateError() {
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences("mail_prefs", Context.MODE_PRIVATE);
+        return prefs.getBoolean("cert_error", false);
+    }
+
+    private void markCertificateError() {
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences("mail_prefs", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("cert_error", true).apply();
+    }
+
+    private boolean isCertificateException(Exception e) {
+        Throwable cause = e;
+        while (cause != null) {
+            if (cause instanceof SSLHandshakeException ||
+                    cause instanceof CertificateException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
     public MailCheckWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
         createNotificationChannel();
@@ -55,103 +80,129 @@ public class MailCheckWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        synchronized (AUTH_LOCK) {
-            MailActivity.initSharedPreferences(getApplicationContext());
-            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
-            int maxAttempts = 2;
-            int attempt = 0;
-            boolean success = false;
+        synchronized (SessionLock.LOCK) {
+        try {
+            if (isCertificateError()) {
+                Log.w(TAG, "Certificate validation error, skipping mail check");
+                return Result.success();
+            }
+            if (isAuthBlocked()) {
+                Log.w(TAG, "Authentication blocked, skipping check");
+                return Result.success();
+            }
+            synchronized (GLOBAL_AUTH_LOCK) {
+                int maxAttempts = 10;
+                int attempt = 0;
+                boolean success = false;
 
-            while (attempt < maxAttempts && !success) {
-                attempt++;
-                Log.d(TAG, "MailCheckWorker STARTED");
-                try {
-                    Log.d(TAG, "Initializing client...");
-                    MailActivity.initSharedPreferences(getApplicationContext());
-                    if (client == null) {
-                        Log.e(TAG, "OkHttpClient is null");
-                        continue;
-                    }
-                    boolean sessionRestored = restoreSession();
-                    if (!sessionRestored) {
-                        Log.e(TAG, "Failed to restore session");
-                        continue;
-                    }
-                    JSONArray messages = RoundcubeAPI.fetchMessages(
-                            getApplicationContext(),
-                            1,
-                            "INBOX"
-                    );
-                    Set<String> currentUids = extractUids(messages);
-                    Set<String> newUids = findNewEmails(currentUids);
+                while (attempt < maxAttempts && !success) {
+                    attempt++;
+                    Log.d(TAG, "MailCheckWorker STARTED");
+                    try {
+                        Log.d(TAG, "Initializing client...");
+                        MailActivity.initSharedPreferences(getApplicationContext());
+                        if (!restoreSession()) {
+                            Log.e(TAG, "Session restoration failed");
+                            continue;
+                        }
 
-                    if (!newUids.isEmpty()) {
-                        // Получаем детали новых писем
-                        List<EmailPreview> emailPreviews = new ArrayList<>();
-                        for (int i = 0; i < messages.length(); i++) {
-                            JSONObject msg = messages.getJSONObject(i);
-                            String uid = msg.getString("uid");
-                            if (newUids.contains(uid)) {
-                                try {
-                                    emailPreviews.add(new EmailPreview(msg));
-                                } catch (JSONException e) {
-                                    Log.e(TAG, "Error creating email preview", e);
+                        boolean sessionRestored = restoreSession();
+                        if (!sessionRestored) {
+                            Log.e(TAG, "Failed to restore session");
+                            continue;
+                        }
+                        String folder = getInputData().getString("folder");
+
+                        JSONArray messages = RoundcubeAPI.fetchMessages(
+                                getApplicationContext(),
+                                1,
+                                folder // Используем полученную папку
+                        );
+
+                        Set<String> currentUids = extractUids(messages);
+                        Set<String> newUids = findNewEmails(currentUids, folder); // Передаем папку
+
+                        if (!newUids.isEmpty() && "INBOX".equals(folder)) { // Только для INBOX!
+                            // Получаем детали новых писем
+                            List<EmailPreview> emailPreviews = new ArrayList<>();
+                            for (int i = 0; i < messages.length(); i++) {
+                                JSONObject msg = messages.getJSONObject(i);
+                                String uid = msg.getString("uid");
+                                if (newUids.contains(uid)) {
+                                    try {
+                                        emailPreviews.add(new EmailPreview(msg));
+                                    } catch (JSONException e) {
+                                        Log.e(TAG, "Error creating email preview", e);
+                                    }
                                 }
                             }
+
+                            showNotification(emailPreviews);
+                            saveLastUids(currentUids, folder); // Сохраняем с указанием папки
                         }
 
-                        showNotification(emailPreviews);
-                        saveLastUids(currentUids);
-                    }
+                        Log.d(TAG, "Received " + messages.length() + " messages");
+                        Log.d(TAG, "Current UIDs: " + currentUids);
+                        Log.d(TAG, "New UIDs: " + newUids);
+                        success = true;
+                        Log.d(TAG, "Session restored: " + sessionRestored);
+                        Log.d(TAG, "Fetched messages: " + messages.length());
+                        Log.d(TAG, "New emails found: " + newUids.size());
+                        return Result.success();
 
-                    Log.d(TAG, "Received " + messages.length() + " messages");
-                    Log.d(TAG, "Current UIDs: " + currentUids);
-                    Log.d(TAG, "New UIDs: " + newUids);
-                    success = true;
-                    Log.d(TAG, "Session restored: " + sessionRestored);
-                    Log.d(TAG, "Fetched messages: " + messages.length());
-                    Log.d(TAG, "New emails found: " + newUids.size());
-                    return Result.success();
-
-                } catch (Exception e) {
-                    Log.e(TAG, "Mail check error on attempt " + attempt, e);
-                    if (attempt < maxAttempts) {
-                        try {
-                            Thread.sleep(5000); // Пауза 5 сек между попытками
-                        } catch (InterruptedException ex) {
-                            throw new RuntimeException(ex);
-                        }
+                    } // Замените существующий блок catch
+                    catch (MailActivity.SessionExpiredException e) {
+                        // Агрессивная очистка при истечении сессии
+                        MailActivity.clearSessionData(getApplicationContext());
+                        FileLogger.log(TAG, "Session expired: " + e.getMessage());
                     }
-                    if (!restoreSession()) {
-                        Log.e(TAG, "Failed to restore session after error");
-                    }
+                    long delay = 5000 * (long) Math.pow(2, attempt);
+                    Thread.sleep(delay);
                 }
-            }
-
-            if (!success) {
-                Log.e(TAG, "Mail check failed after " + maxAttempts + " attempts");
                 return Result.retry();
             }
-            scheduleNextRun();
-            return Result.success();
+        } catch (Exception e) {
+            // Обработка ошибок сертификата
+            if (isCertificateException(e)) {
+                markCertificateError();
+            } else if (e instanceof MailActivity.SessionExpiredException) {
+                handleAuthFailure(); // Блокируем при частых ошибках
+            }
+            scheduleDelayedRetry(15);
+            return Result.retry();
         }
     }
-    private void scheduleNextRun() {
-        OneTimeWorkRequest nextRequest = new OneTimeWorkRequest.Builder(MailCheckWorker.class)
-                .setInitialDelay(15, TimeUnit.SECONDS)
+    }
+    private void handleAuthFailure() {
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences("mail_prefs", Context.MODE_PRIVATE);
+        int failures = prefs.getInt("auth_failures", 0) + 1;
+        prefs.edit().putInt("auth_failures", failures).apply();
+
+        if (failures > 3) {
+            prefs.edit().putBoolean("auth_blocked", true).apply();
+            Log.w(TAG, "Authentication blocked due to multiple failures");
+        }
+    }
+
+    private boolean isAuthBlocked() {
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences("mail_prefs", Context.MODE_PRIVATE);
+        return prefs.getBoolean("auth_blocked", false);
+    }
+    private void scheduleDelayedRetry(int SECONDS) {
+        OneTimeWorkRequest retryWork = new OneTimeWorkRequest.Builder(MailCheckWorker.class)
+                .setInitialDelay(SECONDS, TimeUnit.SECONDS)
                 .build();
 
         WorkManager.getInstance(getApplicationContext())
-                .enqueueUniqueWork(
-                        "mailCheck",
-                        ExistingWorkPolicy.REPLACE,
-                        nextRequest
-                );
+                .enqueueUniqueWork("mailRetry", ExistingWorkPolicy.REPLACE, retryWork);
     }
+
     private boolean restoreSession() {
         Context context = getApplicationContext();
         MailActivity.initSharedPreferences(context);
+        MailActivity.refreshCsrfToken(context);
         if (!MailActivity.isSessionValid(context)) {
+            Log.d(TAG, "Session invalid, forcing reauthentication");
             return MailActivity.forceReauthenticate(context);
         }
         return true;
@@ -167,28 +218,30 @@ public class MailCheckWorker extends Worker {
         return uids;
     }
 
-    private Set<String> findNewEmails(Set<String> currentUids) {
-        SharedPreferences prefs = getApplicationContext()
-                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    private Set<String> findNewEmails(Set<String> currentUids, String folder) {
+        if (folder == null || folder.isEmpty()) {
+            folder = "INBOX"; // Значение по умолчанию
+        }
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // Создаем копию для изменяемого Set
+        String key = KEY_LAST_UIDS_PREFIX + folder;
         Set<String> lastUids = new HashSet<>(
-                prefs.getStringSet(KEY_LAST_UIDS, Collections.emptySet())
+                prefs.getStringSet(key, Collections.emptySet())
         );
 
         Set<String> newUids = new HashSet<>(currentUids);
         newUids.removeAll(lastUids);
-        Log.d(TAG, "Last UIDs: " + lastUids.size());
-        Log.d(TAG, "New UIDs count: " + newUids.size());
+        Log.d(TAG, "Last UIDs (" + folder + "): " + lastUids.size());
+        Log.d(TAG, "New UIDs count (" + folder + "): " + newUids.size());
         return newUids;
     }
 
-    private void saveLastUids(Set<String> uids) {
-        SharedPreferences prefs = getApplicationContext()
-                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    private void saveLastUids(Set<String> uids, String folder) {
+        SharedPreferences prefs = getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String key = KEY_LAST_UIDS_PREFIX + folder;
 
         prefs.edit()
-                .putStringSet(KEY_LAST_UIDS, uids)
+                .putStringSet(key, uids)
                 .apply();
     }
 
@@ -196,10 +249,12 @@ public class MailCheckWorker extends Worker {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
 
         Context context = getApplicationContext();
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager.getNotificationChannel(CHANNEL_ID) != null) return;
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Почтовые уведомления",
-                NotificationManager.IMPORTANCE_HIGH // Высокий приоритет
+                NotificationManager.IMPORTANCE_HIGH
         );
         channel.setDescription("Уведомления о новых письмах");
         channel.enableLights(true);
@@ -208,24 +263,16 @@ public class MailCheckWorker extends Worker {
         channel.setVibrationPattern(new long[]{0, 300, 200, 300});
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         channel.setShowBadge(true);
-
-        NotificationManager manager = context.getSystemService(NotificationManager.class);
-
-        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            manager.createNotificationChannel(channel);
-            Log.d(TAG, "Notification channel created with high importance");
-        } else {
-            // Пересоздаем канал для обновления настроек
-            manager.deleteNotificationChannel(CHANNEL_ID);
-            manager.createNotificationChannel(channel);
-            Log.d(TAG, "Notification channel recreated");
-        }
+        manager.createNotificationChannel(channel);
     }
 
     private void showNotification(List<EmailPreview> emails) {
         int newCount = emails.size();
         if (newCount == 0) return;
-
+        if (emails == null || emails.isEmpty()) {
+            Log.d(TAG, "No emails to notify");
+            return;
+        }
         Context context = getApplicationContext();
 
         // Проверка разрешения

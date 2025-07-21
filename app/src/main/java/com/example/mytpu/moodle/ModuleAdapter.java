@@ -93,9 +93,23 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
     @Override
     public void onBindViewHolder(@NonNull ModuleViewHolder holder, int position) {
         CourseModule module = modules.get(position);
-        holder.moduleName.setText(module.getName());
-        holder.moduleType.setText(getModuleType(module.getType()));
-        holder.moduleIcon.setImageResource(getIconForType(module.getType()));
+
+        // Обработка меток как текстовых блоков
+        if ("label".equals(module.getType())) {
+            holder.moduleName.setText(module.getName());
+            holder.moduleType.setVisibility(View.GONE);
+            holder.moduleIcon.setVisibility(View.GONE);
+
+            // Убираем анимацию и кликабельность
+            holder.itemView.setOnTouchListener(null);
+            holder.itemView.setOnClickListener(null);
+            holder.itemView.setClickable(false);
+        } else {
+            // Стандартная обработка других элементов
+            holder.moduleName.setText(module.getName());
+            holder.moduleType.setText(getModuleType(module.getType()));
+            holder.moduleIcon.setImageResource(getIconForType(module.getType()));
+
 
         holder.itemView.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -116,7 +130,7 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
             intent.putExtra("name", module.getName());
             intent.putExtra("url", module.getUrl());
             context.startActivity(intent);
-        });
+        });}
     }
 
     private int getIconForType(String type) {
@@ -153,7 +167,7 @@ public class ModuleAdapter extends RecyclerView.Adapter<ModuleAdapter.ModuleView
             case "page": return "Страница";
             case "folder": return "Папка";
             case "lanebs": return "Литература";
-            case "label": return "Метка";
+            case "label": return "Текстовый блок";
             case "book": return "Книга";
             case "scorm": return "SCORM-пакет";
             case "feedback": return "Обратная связь";

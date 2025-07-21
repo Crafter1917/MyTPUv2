@@ -3,6 +3,7 @@ package com.example.mytpu.moodle;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
@@ -14,7 +15,16 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.jsoup.Jsoup;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import com.example.mytpu.MainScreen;
 import com.example.mytpu.MyApplication;
 import com.example.mytpu.R;
@@ -22,9 +32,11 @@ import com.example.mytpu.R;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.jsoup.Jsoup;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,7 +51,7 @@ public class CourseActivity extends AppCompatActivity {
     private static final String TAG = "CourseActivity";
     private static final String WEB_SERVICE_URL = "https://stud.lms.tpu.ru/webservice/rest/server.php";
     private SharedPreferences sharedPreferences;
-    private TextView courseTitle;
+
     private ProgressBar progressBar;
     private RecyclerView contentRecyclerView;
     private OkHttpClient client;
@@ -71,7 +83,6 @@ public class CourseActivity extends AppCompatActivity {
             finish();
             return;
         }
-        courseTitle.setText(courseName);
 
         client = ((MyApplication) getApplication()).getClient();
         try {
@@ -94,14 +105,13 @@ public class CourseActivity extends AppCompatActivity {
     }
 
     private void initializeViews() {
-        courseTitle = findViewById(R.id.courseTitle);
         progressBar = findViewById(R.id.progressBar);
         contentRecyclerView = findViewById(R.id.contentRecyclerView);
     }
 
     private void setupRecyclerView() {
         contentRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        contentAdapter = new CourseContentAdapter(new ArrayList<>());
+        contentAdapter = new CourseContentAdapter(new ArrayList<>(), token);
         contentRecyclerView.setAdapter(contentAdapter);
     }
 
@@ -155,55 +165,70 @@ public class CourseActivity extends AppCompatActivity {
         });
     }
 
-    private List<CourseContentAdapter.CourseSection> parseCourseSections(JSONArray sections) throws JSONException {
+    private List<CourseContentAdapter.CourseSection> parseCourseSections(JSONArray sectionsArray) throws JSONException {
         List<CourseContentAdapter.CourseSection> courseSections = new ArrayList<>();
 
-        for (int i = 0; i < sections.length(); i++) {
-            JSONObject section = sections.getJSONObject(i);
+        // Добавляем карточку курса из первого раздела
+        if (sectionsArray.length() > 0) {
+            JSONObject firstSection = sectionsArray.getJSONObject(0);
+            String summary = firstSection.optString("summary", "");
+
+            // Создаем специальный раздел для карточки курса
+            List<ModuleAdapter.CourseModule> courseCardList = new ArrayList<>();
+            ModuleAdapter.CourseModule courseCard = new ModuleAdapter.CourseModule(
+                    0,
+                    0,
+                    "Course Card",
+                    "course_card",
+                    "",
+                    summary,
+                    getIntent().getIntExtra("courseId", -1)
+            );
+            courseCardList.add(courseCard);
+            courseSections.add(new CourseContentAdapter.CourseSection("Course Card", courseCardList));
+        }
+
+        for (int i = 0; i < sectionsArray.length(); i++) {
+            JSONObject section = sectionsArray.getJSONObject(i);
             JSONArray modules = section.optJSONArray("modules");
             String sectionName = section.optString("name", "Без названия");
-            if (sectionName.isEmpty()) sectionName = "Раздел " + (i + 1);
-
-            // Если нет модулей - пропускаем раздел
-            if (modules == null || modules.length() == 0) {
-                Log.d(TAG, "No modules in section: " + section.getString("name"));
-                continue;
-            }
 
             List<ModuleAdapter.CourseModule> courseModules = new ArrayList<>();
 
-            for (int j = 0; j < modules.length(); j++) {
-                JSONObject module = modules.getJSONObject(j);
-                int cmid = module.optInt("coursemodule", module.getInt("id")); // ✅
-                int instanceId = module.getInt("instance");
-                int courseId = getIntent().getIntExtra("courseId", -1); // Получаем courseId из Intent
+            if (modules != null) {
+                for (int j = 0; j < modules.length(); j++) {
+                    JSONObject module = modules.getJSONObject(j);
+                    int cmid = module.optInt("coursemodule", module.getInt("id"));
+                    int instanceId = module.getInt("instance");
+                    int courseId = getIntent().getIntExtra("courseId", -1);
+                    String modName = module.getString("modname");
+                    String name = module.optString("name", "");
+                    String description = module.optString("description", "");
 
-                String modName = module.getString("modname");
+                    // Для меток используем текст описания как основной контент
+                    if ("label".equals(modName)) {
+                        name = !TextUtils.isEmpty(description) ?
+                                Jsoup.parse(description).text() :
+                                "Текстовый блок";
+                    }
 
-                ModuleAdapter.CourseModule courseModule = new ModuleAdapter.CourseModule(
-                        cmid,
-                        instanceId,
-                        module.getString("name"),
-                        modName,
-                        module.optString("url", ""),
-                        module.optString("description", ""),
-                        courseId // Добавляем courseId в конструктор
-
-                );
-                courseModules.add(courseModule);
-                Log.d("parseCourseSections",
-                        String.format("Added CourseModule: cmid=%d, instanceId=%d, name='%s', modName='%s', courseId=%d",
-                                cmid,
-                                instanceId,
-                                module.getString("name"),
-                                modName,
-                                courseId));
+                    ModuleAdapter.CourseModule courseModule = new ModuleAdapter.CourseModule(
+                            cmid,
+                            instanceId,
+                            name,
+                            modName,
+                            module.optString("url", ""),
+                            description,
+                            courseId
+                    );
+                    courseModules.add(courseModule);
+                }
             }
+
             courseSections.add(new CourseContentAdapter.CourseSection(sectionName, courseModules));
         }
         return courseSections;
     }
-
 
     @Override
     protected void onDestroy() {

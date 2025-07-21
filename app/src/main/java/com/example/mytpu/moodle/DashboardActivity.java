@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -41,6 +42,7 @@ import org.jsoup.nodes.Element;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -171,7 +173,7 @@ public class DashboardActivity extends AppCompatActivity
             try {
                 // Получение информации о пользователе
                 JSONObject userInfo = getSiteInfo();
-                if (userInfo != null) {
+                if (userInfo != null && userInfo.has("userid")) { // Исправлено
                     String userName = userInfo.optString("fullname", "Пользователь");
                     int userId = userInfo.getInt("userid");
 
@@ -362,87 +364,41 @@ public class DashboardActivity extends AppCompatActivity
             JSONObject course = coursesJson.getJSONObject(i);
             String name = course.getString("fullname");
             int id = course.getInt("id");
-            String url = "https://stud.lms.tpu.ru/course/view.php?id=" + id;
-
-            // Извлекаем прогресс (если есть)
             int progress = 0;
-            if (course.has("progress")) {
+            if (course.has("progress") && !course.isNull("progress")) {
                 progress = course.getInt("progress");
             }
-
-            courses.add(new Course(name, url, id, progress)); // Передаем прогресс
+            Log.d(TAG, "progress=" +progress);
+            courses.add(new Course(name, "", id, progress));
         }
         return courses;
     }
-
-    @SuppressLint("ClickableViewAccessibility")
     private void updateCoursesUI(List<Course> courses) {
         coursesContainer.removeAllViews();
         LayoutInflater inflater = LayoutInflater.from(this);
-        try {
-            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
 
-            // Основные учетные данные
-            SharedPreferences mainPrefs = EncryptedSharedPreferences.create(
-                    "user_credentials",
-                    masterKeyAlias,
-                    this,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            );
-
-            // Почтовые учетные данные в том же хранилище
-            SharedPreferences mailPrefs = EncryptedSharedPreferences.create(
-                    "mail_credentials",
-                    masterKeyAlias,
-                    this,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            );
-
-            // Сохраняем токен Moodle и для почты
-            token = mainPrefs.getString("token", null);
-            mailPrefs.edit()
-                    .putString("mail_token", token)
-                    .apply();
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error accessing secure storage", e);
-            showToast("Ошибка доступа к хранилищу");
-            finish();
-        }
         for (Course course : courses) {
-            // Инфлейтим кастомный макет вместо стандартной кнопки
             View courseItem = inflater.inflate(R.layout.item_course, coursesContainer, false);
 
-            // Находим элементы
             TextView title = courseItem.findViewById(R.id.course_title);
             ImageView icon = courseItem.findViewById(R.id.course_icon);
+            ProgressBar progressBar = courseItem.findViewById(R.id.progressBar); // Получаем ProgressBar
+            TextView progressText = courseItem.findViewById(R.id.progressText); // Получаем TextView для процентов
             View container = courseItem.findViewById(R.id.course_container);
 
-            // Устанавливаем данные
             title.setText(course.getName());
-
-            // Иконка в зависимости от типа курса (пример)
             icon.setImageResource(R.drawable.ic_book);
 
-            // Клик-лисенер
+            // Устанавливаем прогресс
+            int progress = course.getProgress();
+            progressBar.setProgress(progress);
+            progressText.setText(String.format(Locale.getDefault(), "%d%%", progress));
+
             container.setOnClickListener(v -> {
                 Intent intent = new Intent(DashboardActivity.this, CourseActivity.class);
                 intent.putExtra("courseId", course.getId());
                 intent.putExtra("courseName", course.getName());
                 startActivity(intent);
-            });
-
-            // Добавляем анимацию при нажатии
-            container.setOnTouchListener((v, event) -> {
-                if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start();
-                } else if (event.getAction() == MotionEvent.ACTION_UP ||
-                        event.getAction() == MotionEvent.ACTION_CANCEL) {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
-                }
-                return false;
             });
 
             coursesContainer.addView(courseItem);
@@ -509,7 +465,7 @@ public class DashboardActivity extends AppCompatActivity
         private final String name;
         private final String url;
         private final int id;
-        private int progress; // Добавляем поле прогресса
+        private final int progress; // Добавляем поле прогресса
         public Course(String name, String url, int id, int progress) {
             this.name = name;
             this.url = url;

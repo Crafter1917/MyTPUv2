@@ -1,18 +1,15 @@
 package com.example.mytpu.mailTPU;
 
-import static com.example.mytpu.mailTPU.MailActivity.context;
 import static com.example.mytpu.mailTPU.MailActivity.getCsrfToken;
-import static org.chromium.base.ContextUtils.getApplicationContext;
-
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
 import android.text.TextUtils;
+import android.util.JsonReader;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
 import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.FileUtils;
@@ -25,10 +22,10 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Entities;
-import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,14 +84,61 @@ public class RoundcubeAPI {
 
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) throw new IOException("Preview error: " + response.code());
-            return response.body().string();
+            String responseBody = response.body().string();
+
+            // Проверка на ошибку сессии
+            if (responseBody.contains("session_error") ||
+                    responseBody.contains("Your session is invalid")) {
+                try {
+                    throw new MailActivity.SessionExpiredException("Session expired");
+                } catch (MailActivity.SessionExpiredException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return responseBody;
         }
     }
 
+    private static String fetchWithRetry(OkHttpClient client, Request request) throws IOException {
+        int attempts = 0;
+        while (attempts < 3) {
+            try {
+                Response response = client.newCall(request).execute();
+                if (response.isSuccessful()) return response.body().string();
+            } catch (IOException e) {
+                if (e.getMessage().contains("Canceled") && attempts < 2) {
+                    attempts++;
+                    continue;
+                }
+                throw e;
+            }
+        }
+        throw new IOException("Failed after 3 attempts");
+    }
+
+    // RoundcubeAPI.java
+
+    public static int getFolderMessageCount(JSONArray messages) {
+        try {
+            // Пытаемся получить общее количество из первого сообщения
+            if (messages.length() > 0) {
+                JSONObject first = messages.getJSONObject(0);
+                if (first.has("_messagecount")) {
+                    return first.getInt("_messagecount");
+                }
+            }
+
+            // Fallback: возвращаем количество на текущей странице
+            return messages.length();
+        } catch (JSONException e) {
+            return messages.length();
+        }
+    }
 
     public static JSONArray fetchMessages(Context context, int currentPage, String folder)
-            throws IOException, JSONException, MailActivity.SessionExpiredException {
+            throws IOException, JSONException, MailActivity.SessionExpiredException, InterruptedException {
 
+        synchronized (SessionLock.LOCK) {
         String newToken = MailActivity.refreshCsrfToken(context);
         if (newToken.isEmpty()) {
             throw new MailActivity.SessionExpiredException("Failed to refresh CSRF token");
@@ -102,28 +146,30 @@ public class RoundcubeAPI {
 
 
         Log.i(TAG, "Fetching messages list for page: " + currentPage);
+        // Во всех компонентах используйте:
         OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
-        HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
-                .addQueryParameter("_task", "mail")
-                .addQueryParameter("_action", "list")
-                .addQueryParameter("_layout", "widescreen")
-                .addQueryParameter("_mbox", folder) // Используем нормализованное имя
-                .addQueryParameter("_page", String.valueOf(currentPage))
-                .addQueryParameter("_remote", "1")
-                .addQueryParameter("_unlock", "loading" + System.currentTimeMillis())
-                .addQueryParameter("_", String.valueOf(System.currentTimeMillis()))
-                .addQueryParameter("_token", getCsrfToken(context))
-                .build();
-
-
+        if (Thread.interrupted()) {
+            throw new InterruptedException("Task canceled");
+        }
+            HttpUrl url = HttpUrl.parse("https://letter.tpu.ru/mail/").newBuilder()
+                    .addQueryParameter("_task", "mail")
+                    .addQueryParameter("_action", "list")
+                    .addQueryParameter("_layout", "widescreen")
+                    .addQueryParameter("_mbox", folder)
+                    .addQueryParameter("_page", String.valueOf(currentPage))
+                    .addQueryParameter("_remote", "1")
+                    .addQueryParameter("_unlock", "loading" + System.currentTimeMillis())
+                    .addQueryParameter("_", String.valueOf(System.currentTimeMillis()))
+                    .addQueryParameter("_token", MailActivity.getCsrfToken(context))
+                    .build();
         Log.d("API", "Fetching messages from: " + url);
-        request = new Request.Builder()
+        Request request = new Request.Builder()
                 .url(url)
-                .header("X-Requested-With", "XMLHttpRequest")
-                .header("Accept", "application/json") // Важно для формата ответа
                 .build();
+
+
         try (Response response = client.newCall(request).execute()) {
-            String responseBody = response.body().string();
+            String responseBody = fetchWithRetry(client, request);
             Log.d(TAG, "Server response:"
                     + "\nCode: " + response.code()
                     + "\nBody length: " + responseBody.length() + " chars");
@@ -139,68 +185,102 @@ public class RoundcubeAPI {
                     throw new MailActivity.SessionExpiredException("Session expired (server response)");
                 }
             }
+            if (response.code() == 401) {
+                throw new MailActivity.SessionExpiredException("Unauthorized (401)");
+            }
             return parseJsResponse(responseBody);
-
         } catch (TooManyAttemptsException e) {
             throw new RuntimeException(e);
         }
-
-
+    }
     }
 
+
+
+
+
+
+
+
+
     private static JSONArray parseJsResponse(String jsCode) throws JSONException {
-        Log.d(TAG, "Parsing JavaScript response");
+        Log.d(TAG, "Parsing JavaScript response: " + jsCode);
         JSONArray result = new JSONArray();
-        // Updated regex to accurately capture the email object between { and }, followed by , {
         Pattern pattern = Pattern.compile(
                 "this\\.add_message_row\\((\\d+),\\s*(\\{.*?\\})\\s*,\\s*\\{.*?\\}\\s*,\\s*(true|false)\\);",
                 Pattern.DOTALL
         );
+
         Matcher matcher = pattern.matcher(jsCode);
         while (matcher.find()) {
+            String uid = matcher.group(1);
+            String rawJson = matcher.group(2);
+
             try {
-                String uid = matcher.group(1);
-                String rawJson = matcher.group(2)
-                        .replace("\\'", "'")
-                        .replace("'", "\"")
+                // Упрощенная подготовка JSON-строки
+                String fixedJson = rawJson
                         .replace("\\\"", "\"")
                         .replace("\\\\", "\\")
-                        .replace("\\/", "/")
-                        .replace("\n", " ") // Добавляем замену переносов строк
-                        .replace("\r", " ") // И возвратов каретки
-                        .replace("\t", " "); // И табуляции
+                        .replace("\\'", "'");
 
-                // Декодируем HTML-сущности
-                String decodedJson = Parser.unescapeEntities(rawJson, true);
+                // Используем JsonReader в lenient-режиме
+                JsonReader reader = new JsonReader(new StringReader(fixedJson));
+                reader.setLenient(true);
 
-                JSONObject emailJson = new JSONObject(decodedJson);
-                StringBuilder sanitizedJson = new StringBuilder();
-                Pattern valuePattern = Pattern.compile(":\"(.*?)(?<!\\\\)\"", Pattern.DOTALL);
-                Matcher valueMatcher = valuePattern.matcher(rawJson);
-                while (valueMatcher.find()) {
-                    String valueContent = valueMatcher.group(1);
-                    String escapedContent = valueContent.replace("\"", "\\\"");
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        valueMatcher.appendReplacement(sanitizedJson, ":\"" + escapedContent + "\"");
-                    }
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    valueMatcher.appendTail(sanitizedJson);
-                }
+                // Ручной парсинг JSON
+                JSONObject emailJson = parseJsonObject(reader);
                 emailJson.put("uid", uid);
                 result.put(emailJson);
-            } catch (JSONException e) {
-                //Log.e("RoundcubeAPI", "JSON parse error: " + e.getMessage());
+            } catch (Exception e) {
+                Log.e("RoundcubeAPI", "JSON parse error: " + e.getMessage() + "\nJSON: " + rawJson);
             }
         }
+
         Log.i(TAG, "Total messages parsed: " + result.length());
         return result;
     }
+
+    // Ручной парсинг JSON-объекта с использованием JsonReader
+    private static JSONObject parseJsonObject(JsonReader reader) throws IOException, JSONException {
+        JSONObject result = new JSONObject();
+        reader.beginObject();
+        while (reader.hasNext()) {
+            String key = reader.nextName();
+            switch (reader.peek()) {
+                case STRING:
+                    result.put(key, reader.nextString());
+                    break;
+                case NUMBER:
+                    try {
+                        result.put(key, reader.nextLong());
+                    } catch (NumberFormatException e) {
+                        result.put(key, reader.nextDouble());
+                    }
+                    break;
+                case BOOLEAN:
+                    result.put(key, reader.nextBoolean());
+                    break;
+                default:
+                    reader.skipValue();
+            }
+        }
+        reader.endObject();
+        return result;
+    }
+
+
+
+
+
+
+
+
     public static class TooManyAttemptsException extends Exception {
         public TooManyAttemptsException(String message) {
             super(message);
         }
     }
+
     private static void handleResponseErrors(Response response, String responseBody)
             throws IOException, MailActivity.SessionExpiredException, TooManyAttemptsException {
         if (responseBody.contains("session_error")
@@ -244,6 +324,7 @@ public class RoundcubeAPI {
 
     public static String fetchEmailContent(Context context, String emailId, boolean allowRemote,
                                            AttachmentsCallback callback) throws IOException {
+        // Во всех компонентах используйте:
         OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
         String csrfToken = MailActivity.refreshCsrfToken(context);
         String mainContent = fetchPreviewContent(client, csrfToken, emailId, allowRemote);
@@ -264,10 +345,10 @@ public class RoundcubeAPI {
 
             // Извлекаем основной контейнер с телом письма
             Element messageBody = doc.selectFirst("#messagebody");
-            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(MailActivity.context).getClient();
-
+            // Во всех компонентах используйте:
+            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
             // RoundcubeAPI.java
-            List<Attachment> attachments = parseAttachments(doc, emailId, token, client, callback);
+            List<Attachment> attachments = parseAttachments(doc, emailId, token, client, callback, context);
             boolean hasBlocked = html.contains("blocked.gif");
             Log.d(TAG, "hasBlocked: "+hasBlocked);
             if (callback != null) {
@@ -358,7 +439,7 @@ public class RoundcubeAPI {
     }
 
     public static List<Attachment> parseAttachments(Document doc, String emailId, String token,
-                                                    OkHttpClient client, AttachmentsCallback callback) {
+                                                    OkHttpClient client, AttachmentsCallback callback, Context context) {
         List<Attachment> attachments = new ArrayList<>();
         Set<String> processedUrls = new HashSet<>();
 
@@ -385,7 +466,7 @@ public class RoundcubeAPI {
                 boolean isImage = container.classNames().contains("image")
                         || isImageFile(fileName); // Новая проверка!
 
-                processAttachment(href, fileName, fileSize, isImage, emailId, token, client, attachments, processedUrls);
+                processAttachment(href, fileName, fileSize, isImage, emailId, token, client, attachments, processedUrls, context);
             } catch (Exception e) {
                 Log.e(TAG, "💥 Error processing main attachment: " + e.getMessage());
             }
@@ -406,7 +487,7 @@ public class RoundcubeAPI {
                 // Всегда проверяем расширение для безопасности
                 boolean isImage = isImageFile(fileName);
 
-                processAttachment(href, fileName, fileSize, isImage, emailId, token, client, attachments, processedUrls);
+                processAttachment(href, fileName, fileSize, isImage, emailId, token, client, attachments, processedUrls, context);
             } catch (Exception e) {
                 Log.e(TAG, "💥 Error processing image attachment: " + e.getMessage());
             }
@@ -428,13 +509,13 @@ public class RoundcubeAPI {
 
     private static void processAttachment(String href, String fileName, String fileSize, boolean isImage,
                                           String emailId, String token, OkHttpClient client,
-                                          List<Attachment> attachments, Set<String> processedUrls) {
+                                          List<Attachment> attachments, Set<String> processedUrls, Context context) {
         try {
             String fixedUrl = fixAttachmentUrl(href, emailId, token);
 
             if (processedUrls.contains(fixedUrl)) return;
             processedUrls.add(fixedUrl);
-            File tempFile = downloadAttachment(client, fixedUrl, fileName);
+            File tempFile = downloadAttachment(client, fixedUrl, fileName, context);
 
             if (tempFile == null || tempFile.length() == 0) {
                 Log.e(TAG, "❌ Skipping invalid attachment: " + fileName);
@@ -491,7 +572,7 @@ public class RoundcubeAPI {
         return extension.isEmpty() ? "file" : extension;
     }
 
-    private static File downloadAttachment(OkHttpClient client, String url, String fileName) {
+    private static File downloadAttachment(OkHttpClient client, String url, String fileName, Context context) {
         try {
             Log.d(TAG, "⏬ Starting download: " + fileName + " from: " + url);
             Request request = new Request.Builder()
@@ -507,7 +588,7 @@ public class RoundcubeAPI {
 
                 File tempFile = File.createTempFile(
                         "att_" + System.currentTimeMillis(),
-                        "." + getFileExtension(fileName), // Добавьте точку перед расширением
+                        "." + getFileExtension(fileName),
                         context.getCacheDir()
                 );
                 tempFile.deleteOnExit();
@@ -532,6 +613,9 @@ public class RoundcubeAPI {
                         tempFile.delete();
                         return null;
                     }
+                }
+                catch (IOException e) {
+                    tempFile.delete();
                 }
                 return tempFile;
             }
@@ -610,7 +694,8 @@ public class RoundcubeAPI {
     public static boolean sendComposedEmail(Context context, String to, String subject, String body,
                                             List<Uri> attachments, String csrfToken) throws IOException {
         try {
-            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
+            // Во всех компонентах используйте:
+            OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
             JSONObject composeData = createDraft(context, csrfToken);
             String composeId = composeData.getString("id");
             String from = composeData.getString("from");
@@ -695,7 +780,8 @@ public class RoundcubeAPI {
                 .url(url)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .build();
-        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
+        // Во всех компонентах используйте:
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
         try (Response response = client.newCall(request).execute()) {
             String html = response.body().string();
             Document doc = Jsoup.parse(html);
@@ -770,7 +856,8 @@ public class RoundcubeAPI {
                 .addQueryParameter("_forward_uid", emailId)
                 .addQueryParameter("_token", csrfToken)
                 .build();
-        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
+        // Во всех компонентах используйте:
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
         String composeHtml;
         try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
             composeHtml = response.body().string();
@@ -856,7 +943,8 @@ public class RoundcubeAPI {
                 .addQueryParameter("_mbox", "INBOX")
                 .addQueryParameter("_token", csrfToken)
                 .build();
-        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(getApplicationContext()).getClient();
+        // Во всех компонентах используйте:
+        OkHttpClient client = MailActivity.MyMailSingleton.getInstance(context).getClient();
         try (Response response = client.newCall(new Request.Builder().url(composeUrl).build()).execute()) {
             String html = response.body().string();
             Log.d(TAG, "Compose page HTML length: " + html.length());

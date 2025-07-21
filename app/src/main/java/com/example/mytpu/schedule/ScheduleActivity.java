@@ -3,10 +3,12 @@ package com.example.mytpu.schedule;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
 import android.accounts.Account;
+import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.ContentUris;
 import android.content.Intent;
 import android.database.Cursor;
@@ -143,7 +145,16 @@ public class ScheduleActivity extends AppCompatActivity {
         }
         else if (requestCode == ACCOUNT_REQUEST_CODE) {
             Log.d(TAG, "Returned from account addition flow");
-            checkAccountWithRetry(10, 500);
+            if (resultCode == RESULT_OK) {
+                // После успешного добавления аккаунта пробуем синхронизировать
+                new Handler().postDelayed(() -> {
+                    if (hasGoogleAccount()) {
+                        syncWithGoogleCalendar();
+                    } else {
+                        Log.w(TAG, "Account still not found after addition");
+                    }
+                }, 2000);
+            }
         }
     }
 
@@ -370,19 +381,22 @@ public class ScheduleActivity extends AppCompatActivity {
             int reminderMinutes = calendarFragment.getHours() * 60 + calendarFragment.getMinutes();
             editor.putInt("calendar_reminder_minutes", reminderMinutes);
             editor.putBoolean("weekly_sync", calendarFragment.isWeeklySyncEnabled());
-
-            // Безопасная проверка
-            if (calendarFragment.isAddBreaksEnabled()) {
-                editor.putBoolean("add_breaks", true);
-            } else {
-                editor.putBoolean("add_breaks", false);
-            }
+            editor.putBoolean("add_breaks", calendarFragment.isAddBreaksEnabled());
         }
 
         editor.apply();
         updateAlarms();
     }
 
+    private boolean isFullscreenAlarmActive() {
+        ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        List<ActivityManager.RunningTaskInfo> tasks = am.getRunningTasks(1);
+        if (!tasks.isEmpty()) {
+            ComponentName topActivity = tasks.get(0).topActivity;
+            return topActivity.getClassName().contains("FullscreenAlarmActivity");
+        }
+        return false;
+    }
     @SuppressLint("ScheduleExactAlarm")
     private void updateAlarms() {
         Log.d(TAG, "Updating alarms...");
@@ -400,7 +414,10 @@ public class ScheduleActivity extends AppCompatActivity {
             }
             return;
         }
-
+        if (isFullscreenAlarmActive()) {
+            Log.d(TAG, "Skipping alarm update - fullscreen alarm active");
+            return;
+        }
         int minutesBefore = prefs.getInt("alarm_minutes", 30);
         boolean forCurrentSearch = prefs.getBoolean("forCurrentSearch", false);
 
@@ -754,33 +771,11 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private boolean hasGoogleAccount() {
-        try {
-            AccountManager am = AccountManager.get(this);
-            Pattern googlePattern = Pattern.compile(".*@gmail\\.com|.*@googlemail\\.com", Pattern.CASE_INSENSITIVE);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (checkSelfPermission(Manifest.permission.GET_ACCOUNTS) != PERMISSION_GRANTED) {
-                    Log.w(TAG, "No GET_ACCOUNTS permission");
-                    return false;
-                }
-            }
-
-            Account[] accounts = am.getAccounts();
-            for (Account account : accounts) {
-                if (googlePattern.matcher(account.name).matches()) {
-                    Log.d(TAG, "Found Google account: " + account.name);
-                    return true;
-                }
-            }
-            Log.w(TAG, "No Google accounts found");
-            return false;
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking Google accounts: " + e.getMessage());
-            return false;
-        }
+        return AccountUtils.hasGoogleAccount(this);
     }
 
     public void syncWithGoogleCalendar() {
+
         // Проверяем разрешения для работы с аккаунтами
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -791,7 +786,10 @@ public class ScheduleActivity extends AppCompatActivity {
             );
             return;
         }
-
+        if (!AccountUtils.hasGoogleAccount(this)) {
+            Toast.makeText(this, "Добавьте аккаунт Google в настройках", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (currentSearchQuery.isEmpty()) {
             Toast.makeText(this, "Выберите группу или преподавателя", Toast.LENGTH_SHORT).show();
             return;
@@ -830,6 +828,21 @@ public class ScheduleActivity extends AppCompatActivity {
             return;
         }
 
+
+            // Пытаемся получить ID календаря с повторными попытками
+            long calendarId = getGoogleCalendarIdWithRetry(5, 1000);
+            if (calendarId == -1) {
+                Log.e(TAG, "Primary Google calendar not found after retries");
+                runOnUiThread(() -> {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Календарь не найден")
+                            .setMessage("Не удалось найти основной календарь Google. Добавьте аккаунт Google в настройках устройства.")
+                            .setPositiveButton("Добавить аккаунт", (dialog, which) -> showAddAccountDialog())
+                            .setNegativeButton("Отмена", null)
+                            .show();
+                });
+                return;
+            }
 
         new Thread(() -> {
             try {
@@ -871,6 +884,24 @@ public class ScheduleActivity extends AppCompatActivity {
                 ).show());
             }
         }).start();
+    }
+
+    private long getGoogleCalendarIdWithRetry(int maxAttempts, long delayMillis) {
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            long calendarId = getGoogleCalendarId();
+            if (calendarId != -1) {
+                return calendarId;
+            }
+
+            Log.d(TAG, "Calendar not found, attempt " + attempt + "/" + maxAttempts);
+            try {
+                Thread.sleep(delayMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return -1;
     }
 
     private void addBreakEventToCalendar(LessonData lesson) {

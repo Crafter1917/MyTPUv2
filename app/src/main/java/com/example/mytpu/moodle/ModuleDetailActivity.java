@@ -3,6 +3,7 @@ package com.example.mytpu.moodle;
 import static android.text.Html.fromHtml;
 
 import androidx.cardview.widget.CardView;
+import androidx.core.content.ContextCompat;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.work.WorkInfo;
@@ -29,11 +30,13 @@ import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
 import android.text.style.ImageSpan;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -48,6 +51,7 @@ import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
 import com.example.mytpu.R;
+import com.google.android.material.card.MaterialCardView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -61,9 +65,12 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.URLDecoder;
 import java.security.GeneralSecurityException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -98,6 +105,8 @@ public class ModuleDetailActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_module_detail);
+        MaterialCardView titleCardView = findViewById(R.id.titleCardView);
+        titleCardView.setCardBackgroundColor(getColor(R.color.card_background));
 
         initViews();
         initSecureStorage();
@@ -124,27 +133,10 @@ public class ModuleDetailActivity extends AppCompatActivity {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-
-
-        workInfoLiveData = new MutableLiveData<>();
-        workInfoLiveData.observe(this, workInfo -> {
-            if (workInfo != null) {
-                if (workInfo.getState() == WorkInfo.State.SUCCEEDED) {
-                    String filePath = workInfo.getOutputData().getString("file_path");
-                    if (filePath != null) {
-                        openPdfFile(new File(filePath));
-                    }
-                } else if (workInfo.getState() == WorkInfo.State.FAILED) {
-                    showError("Ошибка загрузки файла");
-                }
-            }
-        });
     }
 
     private void initViews() {
         moduleTitle = findViewById(R.id.moduleTitle);
-        contentView = findViewById(R.id.plainTextContentView);
-        contentScrollView = findViewById(R.id.htmlContentTextView);
         progressBar = findViewById(R.id.progressBar);
         contentLayout = findViewById(R.id.contentLayout);
     }
@@ -193,7 +185,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                     int quizId = getIntent().getIntExtra("instanceId", 0); // Берем instanceId для quiz
                     loadQuizContent(quizId, cmid);
                 } else {
-                    processModuleType(type, cmid, "", instanceId); // Передаем courseId в обработчик
+                    processModuleType(type, cmid, courseId, instanceId); // Передаем courseId в обработчик
                 }
             } catch (Exception e) {
                 runOnUiThread(() -> {
@@ -205,38 +197,32 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    private void processModuleType(String type, int moduleId, String description, int instanceId) throws Exception {
+    private void processModuleType(String type, int cmid, int courseId, int instanceId) throws Exception {
         switch (type) {
             case "page":
-                loadPageContent(moduleId);
+                loadPageContent(cmid);
                 break;
             case "resource":
-                loadResourceContent(moduleId);
+                loadResourceContent(cmid);
                 break;
             case "assign":
-                loadAssignmentContent(moduleId);
+                loadAssignmentContent( cmid,  courseId);
                 break;
             case "forum":
                 loadForumContent(instanceId);
                 break;
             case "url":
-                loadUrlContent(moduleId);
+                loadUrlContent(cmid);
                 break;
             case "folder":
-                loadFolderContent(moduleId);
-                break;
-            case "quiz":
-                loadQuizContent(moduleId,moduleId);
+                loadFolderContent(cmid);
                 break;
             case "scorm":
-                loadScormContent(moduleId);
+                loadScormContent(cmid);
                 break;
             case "feedback":
             case "label":
-                runOnUiThread(() -> {
-                    displayNoContent("Текстовый блок");
-                    progressBar.setVisibility(View.GONE);
-                });
+                loadLabelContent(instanceId);
                 break;
             case "book": // Книги
                 loadBookContent(instanceId);
@@ -255,14 +241,50 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 break;
 
             case "lanebs":
-                loadLanebsContent(moduleId);
+                loadLanebsContent(cmid);
                 break;
             default:
                 loadGenericContent(type, instanceId);
         }
     }
 
-    // Загрузка контента книги
+    private void loadLabelContent(int instanceId) throws IOException, JSONException {
+        HttpUrl url = buildApiUrl("mod_label_get_labels_by_courses")
+                .addQueryParameter("labelids[0]", String.valueOf(instanceId))
+                .build();
+
+        executeRequest(url, json -> {
+            try {
+                JSONArray labels = json.getJSONArray("labels");
+                if (labels.length() > 0) {
+                    JSONObject label = labels.getJSONObject(0);
+                    String intro = label.optString("intro", "");
+                    String name = label.optString("name", "Текстовый блок");
+
+                    runOnUiThread(() -> displayLabelContent(name, intro));
+                } else {
+                    displayNoContent("Контент недоступен");
+                }
+            } catch (JSONException e) {
+                handleContentError(e);
+            }
+        });
+    }
+
+    private void displayLabelContent(String title, String content) {
+        runOnUiThread(() -> {
+            moduleTitle.setText(title);
+            progressBar.setVisibility(View.GONE);
+
+            MaterialCardView contentCard = createContentCard();
+            TextView contentView = createStyledTextView();
+            contentView.setText(HtmlCompat.fromHtml(content, HtmlCompat.FROM_HTML_MODE_LEGACY));
+
+            LinearLayout cardLayout = (LinearLayout) contentCard.getChildAt(0);
+            cardLayout.addView(contentView);
+            contentLayout.addView(contentCard);
+        });
+    }
     private void loadBookContent(int instanceId) throws IOException, JSONException {
         HttpUrl url = buildApiUrl("mod_book_get_books_by_courses")
                 .addQueryParameter("bookids[0]", String.valueOf(instanceId))
@@ -275,7 +297,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    // Загрузка глоссария
     private void loadGlossaryContent(int instanceId) throws IOException, JSONException {
         HttpUrl url = buildApiUrl("mod_glossary_get_glossaries_by_courses")
                 .addQueryParameter("glossaryids[0]", String.valueOf(instanceId))
@@ -288,7 +309,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    // Загрузка уроков
     private void loadLessonContent(int instanceId) throws IOException, JSONException {
         HttpUrl url = buildApiUrl("mod_lesson_get_lessons_by_courses")
                 .addQueryParameter("lessonids[0]", String.valueOf(instanceId))
@@ -331,14 +351,69 @@ public class ModuleDetailActivity extends AppCompatActivity {
     private void displayHtmlContent(String html, String title) {
         runOnUiThread(() -> {
             moduleTitle.setText(title);
-            contentScrollView.setText(HtmlCompat.fromHtml(
-                    html,
-                    HtmlCompat.FROM_HTML_MODE_LEGACY
-            ));
             progressBar.setVisibility(View.GONE);
+            contentLayout.removeAllViews();
+
+            MaterialCardView contentCard = createContentCard();
+            LinearLayout cardLayout = (LinearLayout) contentCard.getChildAt(0);
+
+            TextView contentView = createStyledTextView();
+            Html.ImageGetter imageGetter = source -> {
+                URLDrawable urlDrawable = new URLDrawable();
+                new LoadImageTask(urlDrawable, contentView).execute(source);
+                return urlDrawable;
+            };
+
+            contentView.setText(HtmlCompat.fromHtml(
+                    html,
+                    HtmlCompat.FROM_HTML_MODE_LEGACY,
+                    imageGetter,
+                    null
+            ));
+
+            cardLayout.addView(contentView);
+            contentLayout.addView(contentCard);
         });
     }
-    // Универсальная загрузка для неподдерживаемых типов
+
+    private MaterialCardView createContentCard() {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        card.setCardBackgroundColor(getColor(R.color.card_background));
+        card.setCardElevation(4f);
+        card.setRadius(12f);
+        card.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        ((LinearLayout.LayoutParams) card.getLayoutParams()).bottomMargin = 16;
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 16, getResources().getDisplayMetrics()
+        );
+        layout.setPadding(padding, padding, padding, padding);
+        card.addView(layout);
+
+        return card;
+    }
+
+    private TextView createStyledTextView() {
+        TextView textView = new TextView(this);
+        textView.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        textView.setTextColor(ContextCompat.getColor(this, R.color.textPrimary));
+        textView.setMovementMethod(LinkMovementMethod.getInstance());
+        return textView;
+    }
+
     private void loadGenericContent(String type, int instanceId) throws IOException, JSONException {
         HttpUrl url = buildApiUrl("mod_" + type + "_get_" + type + "s_by_courses")
                 .addQueryParameter(type + "ids[0]", String.valueOf(instanceId))
@@ -377,10 +452,8 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-
     private void loadPageContent(int cmid) throws JSONException, IOException {
-        HttpUrl url = buildApiUrl("mod_page_get_pages_by_courses")
-                .build();
+        HttpUrl url = buildApiUrl("mod_page_get_pages_by_courses").build();
 
         executeRequest(url, json -> {
             try {
@@ -390,7 +463,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 for (int i = 0; i < pages.length(); i++) {
                     JSONObject page = pages.getJSONObject(i);
                     if (page.getInt("coursemodule") == cmid) {
-                        Log.d(TAG,"coursemodule: "+cmid);
                         targetPage = page;
                         break;
                     }
@@ -401,33 +473,12 @@ public class ModuleDetailActivity extends AppCompatActivity {
                     return;
                 }
 
-                // Assign to a final variable for use in the lambda
-                final JSONObject finalTargetPage = targetPage;
-
-                String htmlContent = targetPage.getString("content");
-                targetPage.getJSONArray("contentfiles");
-
-                Html.ImageGetter imageGetter = source -> {
-                    URLDrawable urlDrawable = new URLDrawable();
-                    new LoadImageTask(urlDrawable).execute(source); // Запуск асинхронной загрузки
-                    return urlDrawable;
-                };
+                final String htmlContent = targetPage.getString("content");
+                final String pageName = targetPage.getString("name");
 
                 runOnUiThread(() -> {
-                    contentScrollView.setText(HtmlCompat.fromHtml(
-                            htmlContent,
-                            HtmlCompat.FROM_HTML_MODE_LEGACY,
-                            imageGetter,
-                            null
-                    ));
-
-                    try {
-                        // Use the final variable here
-                        moduleTitle.setText(finalTargetPage.getString("name"));
-                    } catch (JSONException e) {
-                        throw new RuntimeException(e);
-                    }
-                    progressBar.setVisibility(View.GONE);
+                    // Удалите статическое использование contentScrollView
+                    displayHtmlContent(htmlContent, pageName);
                 });
 
             } catch (JSONException e) {
@@ -478,81 +529,53 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    private void loadAssignmentContent(int cmid) throws IOException, JSONException {
-        // Проверка валидности courseId
-        int courseId = getIntent().getIntExtra("courseid", -1);
-        if (courseId <= 0) {
-            showErrorAndFinish("Неверный ID курса");
-            return;
-        }
-
-        // 2. Формирование правильного запроса с courseids вместо assignmentids
-        // Используйте cmid вместо courseId для запроса заданий
+    private void loadAssignmentContent(int cmid, int courseId) throws IOException, JSONException {
         HttpUrl url = buildApiUrl("mod_assign_get_assignments")
-                .addQueryParameter("assignmentids[0]", String.valueOf(courseId)) // должно быть instanceId
+                .addQueryParameter("courseids[0]", String.valueOf(courseId))
                 .build();
 
         executeRequest(url, json -> {
             try {
                 JSONArray courses = json.getJSONArray("courses");
-                JSONObject targetCourse = findCourseById(courses, courseId);
-
-                if (targetCourse == null) {
+                if (courses.length() == 0) {
                     showError("Курс не найден");
                     return;
                 }
 
-                JSONArray assignments = targetCourse.getJSONArray("assignments");
-                JSONObject targetAssignment = findAssignmentByCmid(assignments, cmid);
+                JSONObject course = courses.getJSONObject(0);
+                JSONArray assignments = course.getJSONArray("assignments");
+
+                JSONObject targetAssignment = null;
+                for (int i = 0; i < assignments.length(); i++) {
+                    JSONObject assignment = assignments.getJSONObject(i);
+                    if (assignment.getInt("cmid") == cmid) {
+                        targetAssignment = assignment;
+                        break;
+                    }
+                }
 
                 if (targetAssignment != null) {
-                    displayAssignmentInfo(targetAssignment);
+                    // Запускаем AssignmentDetailActivity с данными задания
+                    int assignmentId = targetAssignment.getInt("id");
+                    launchAssignmentDetail(cmid, assignmentId, courseId, targetAssignment.toString());
                 } else {
                     showError("Задание не найдено в курсе");
                 }
             } catch (JSONException e) {
-                handleAssignmentError(json, cmid, courseId);
+                Log.e(TAG,"Ошибка при обработке задания: "+e);
+                showError("Ошибка загрузки данных");
             }
         });
     }
 
-    private JSONObject findCourseById(JSONArray courses, int targetId) throws JSONException {
-        for (int i = 0; i < courses.length(); i++) {
-            JSONObject course = courses.getJSONObject(i);
-            if (course.getInt("id") == targetId) {
-                return course;
-            }
-        }
-        return null;
-    }
-
-    private JSONObject findAssignmentByCmid(JSONArray assignments, int cmid) throws JSONException {
-        for (int i = 0; i < assignments.length(); i++) {
-            JSONObject assignment = assignments.getJSONObject(i);
-            if (assignment.getInt("cmid") == cmid) {
-                return assignment;
-            }
-        }
-        return null;
-    }
-
-    // 4. Улучшенная обработка ошибок
-    private void handleAssignmentError(JSONObject response, int cmid, int courseId) {
-        try {
-            String errorCode = response.optString("errorcode", "unknown");
-            String message = response.optString("message", "Неизвестная ошибка");
-
-            String debugInfo = String.format(
-                    "Ошибка при запросе задания:\nCMID: %d\nCourse ID: %d\nКод ошибки: %s\nСообщение: %s",
-                    cmid, courseId, errorCode, message
-            );
-
-            Log.e(TAG, debugInfo);
-            showError("Ошибка загрузки задания: " + message);
-
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка обработки ошибки задания", e);
-        }
+    private void launchAssignmentDetail(int cmid, int assignmentId, int courseId, String assignmentJson) {
+        Intent intent = new Intent(this, AssignmentDetailActivity.class);
+        intent.putExtra("cmid", cmid);
+        intent.putExtra("assignmentId", assignmentId);
+        intent.putExtra("courseId", courseId);
+        intent.putExtra("assignmentJson", assignmentJson); // Передаем данные задания
+        startActivity(intent);
+        finish(); // Закрываем текущую активность
     }
 
     private void loadForumContent(int instanceId) throws IOException, JSONException {
@@ -630,35 +653,6 @@ public class ModuleDetailActivity extends AppCompatActivity {
         });
     }
 
-    private void displayAssignmentInfo(JSONObject assignment) throws JSONException {
-        // Парсинг основных данных
-        String name = assignment.getString("name");
-        String introHtml = assignment.getString("intro");
-        int grade = assignment.getInt("grade");
-
-        // Парсинг файлов инструкций
-        JSONArray introFiles = assignment.getJSONArray("introfiles");
-        List<String> fileLinks = new ArrayList<>();
-        for (int i = 0; i < introFiles.length(); i++) {
-            JSONObject file = introFiles.getJSONObject(i);
-            fileLinks.add(file.getString("fileurl"));
-        }
-
-        // Форматирование текста
-        String formattedText = String.format(
-                "📌 %s\n\nОценка: %d баллов\n\n%s\n\nПрикрепленные файлы:\n%s",
-                name,
-                grade,
-                fromHtml(introHtml),
-                TextUtils.join("\n", fileLinks)
-        );
-
-        runOnUiThread(() -> {
-            contentView.setText(formattedText);
-            progressBar.setVisibility(View.GONE);
-        });
-    }
-
     @SuppressLint("DefaultLocale")
     private void displayForumDiscussions(JSONArray discussions) throws JSONException {
         StringBuilder sb = new StringBuilder();
@@ -689,76 +683,155 @@ public class ModuleDetailActivity extends AppCompatActivity {
             progressBar.setVisibility(View.GONE);
         });
     }
+    private String sanitizeFileName(String fileName) {
+        // Убираем недопустимые символы
+        String safeName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
 
-    private void downloadFile(String fileUrl) {
-        try {
-            URL url = new URL(fileUrl+"?token="+token);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("GET");
-            connection.setDoOutput(true);
-            Log.d(TAG, "downloadFile: "+url);
-
-            InputStream inputStream = connection.getInputStream();
-            File file = new File(getExternalFilesDir(null), "downloaded_file.pdf");
-
-            Uri contentUri = FileProvider.getUriForFile(
-                    this,
-                    "com.example.mytpu.provider",  // Убедитесь, что authorities здесь совпадает с тем, что в manifest
-                    file
-            );
-
-            Log.d(TAG, "Generated URI: " + contentUri.toString());
-            FileOutputStream outputStream = new FileOutputStream(file);
-
-            byte[] buffer = new byte[1024];
-            int len;
-            while ((len = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, len);
+        // Сокращаем длину имени
+        int maxLength = 100; // Максимальная длина имени файла
+        if (safeName.length() > maxLength) {
+            int dotIndex = safeName.lastIndexOf('.');
+            if (dotIndex > 0) {
+                String ext = safeName.substring(dotIndex);
+                String name = safeName.substring(0, dotIndex);
+                name = name.substring(0, Math.min(name.length(), maxLength - ext.length()));
+                safeName = name + ext;
+            } else {
+                safeName = safeName.substring(0, Math.min(safeName.length(), maxLength));
             }
-
-            outputStream.flush();
-            outputStream.close();
-            inputStream.close();
-
-            openPdfFile(file);
-            finish();
-        } catch (IOException e) {
-            Log.e(TAG, "Ошибка скачивания файла: " + e.getMessage());
-            showError("Ошибка скачивания файла");
         }
+        return safeName;
     }
+    private void downloadFile(String fileUrl) {
+        executor.execute(() -> {
+            try {
+                URL url = new URL(fileUrl + "?token=" + token);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.connect();
 
-    private void openPdfFile(File file) {
+                if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                    // Получаем оригинальное имя файла
+                    String fileName = getFileNameFromConnection(connection, url);
+                    String safeFileName = sanitizeFileName(fileName);
+
+                    // Создаем директорию в кеше
+                    File outputDir = new File(getCacheDir(), "downloaded_files");
+                    if (!outputDir.exists()) outputDir.mkdirs();
+
+                    File outputFile = new File(outputDir, safeFileName);
+
+                    // Скачиваем файл
+                    InputStream input = connection.getInputStream();
+                    try (FileOutputStream output = new FileOutputStream(outputFile)) {
+                        byte[] buffer = new byte[4096];
+                        int bytesRead;
+                        while ((bytesRead = input.read(buffer)) != -1) {
+                            output.write(buffer, 0, bytesRead);
+                        }
+                    }
+
+                    // Открываем файл
+                    runOnUiThread(() -> openDownloadedFile(outputFile));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error downloading file", e);
+                runOnUiThread(() ->
+                        showError("Ошибка загрузки файла: " + e.getMessage()));
+            }
+        });
+    }
+    private void openDownloadedFile(File file) {
         try {
             if (!file.exists()) {
                 showError("Файл не найден: " + file.getAbsolutePath());
                 return;
             }
 
-            // Генерация URI
             Uri contentUri = FileProvider.getUriForFile(
                     this,
-                    "com.example.mytpu.provider",  // Убедитесь, что это совпадает с authorities в AndroidManifest
+                    "com.example.mytpu.provider",
                     file
             );
 
-            Log.d(TAG, "Generated URI: " + contentUri.toString());
+            String mimeType = getMimeType(file.getName());
+            Log.d(TAG, "Opening file: " + file.getName() + " with MIME: " + mimeType);
 
-            // Создание Intent для открытия PDF
-            Intent intent = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(contentUri, "application/pdf")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent openIntent = new Intent(Intent.ACTION_VIEW);
+            openIntent.setDataAndType(contentUri, mimeType);
+            openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            Log.d(TAG, "Intent data: " + contentUri.toString());
+            boolean fileOpened = false;
 
-            // Открытие файла через Intent
-            startActivity(Intent.createChooser(intent, "Открыть PDF"));
+            try {
+                startActivity(openIntent);
+                fileOpened = true;
+            } catch (ActivityNotFoundException e) {
+                Log.w(TAG, "No app for specific type, trying generic");
+                openIntent.setDataAndType(contentUri, "*/*");
+                try {
+                    startActivity(openIntent);
+                    fileOpened = true;
+                } catch (ActivityNotFoundException ex) {
+                    showError("Нет приложения для открытия файлов. Установите файловый менеджер.");
+                }
+            }
 
+            if (fileOpened) {
+                // Закрываем активность после небольшой задержки
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    finish();
+                    // Опционально: анимация закрытия
+                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                }, 300);
+            }
         } catch (Exception e) {
-            Log.e(TAG, "Ошибка открытия файла: " + e.getMessage());
-            showError("Ошибка доступа к файлу");
+            Log.e(TAG, "Error opening file", e);
+            showError("Ошибка открытия файла: " + e.getMessage());
         }
     }
+    private String getFileNameFromConnection(HttpURLConnection connection, URL url) {
+        try {
+            // Пробуем получить имя из Content-Disposition
+            String contentDisposition = connection.getHeaderField("Content-Disposition");
+            if (contentDisposition != null) {
+                String[] parts = contentDisposition.split(";");
+                for (String part : parts) {
+                    if (part.trim().startsWith("filename=")) {
+                        String fileName = part.substring(part.indexOf('=') + 1).trim();
+                        fileName = fileName.replaceAll("^['\"]|['\"]$", "");
+                        return URLDecoder.decode(fileName, "UTF-8");
+                    }
+                }
+            }
+
+            // Если не нашли, берем из URL
+            String path = url.getPath();
+            String fileName = new File(path).getName();
+            return URLDecoder.decode(fileName, "UTF-8");
+
+        } catch (UnsupportedEncodingException e) {
+            return "downloaded_file_" + System.currentTimeMillis();
+        }
+    }
+    private String getMimeType(String fileName) {
+        String type = null;
+        String extension = MimeTypeMap.getFileExtensionFromUrl(fileName);
+
+        // Если не удалось определить через MimeTypeMap
+        if (extension == null || extension.isEmpty()) {
+            int lastDot = fileName.lastIndexOf('.');
+            if (lastDot > 0) {
+                extension = fileName.substring(lastDot + 1);
+            }
+        }
+
+        if (extension != null) {
+            type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+        }
+        return type != null ? type : "application/*";
+    }
+
     private void loadQuizAttempts(int quizId, int coursemodule) throws JSONException, IOException {
         HttpUrl url = buildApiUrl("mod_quiz_get_user_attempts")
                 .addQueryParameter("quizid", String.valueOf(quizId))
@@ -774,6 +847,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
             }
         });
     }
+
     private void openUrl(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
@@ -886,59 +960,40 @@ public class ModuleDetailActivity extends AppCompatActivity {
                                     boolean canPreview,
                                     boolean canReview) throws JSONException {
         runOnUiThread(() -> {
-            // Создаем контейнер
-            LinearLayout container = findViewById(R.id.contentLayout);
-            container.removeAllViews();
-
-            // CardView
-            CardView card = new CardView(this);
-            card.setCardBackgroundColor(Color.WHITE);
-            card.setCardElevation(8f);
-            card.setRadius(16f);
-            card.setUseCompatPadding(true);
-
-            // Внутренний макет
-            LinearLayout layout = new LinearLayout(this);
-            layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(32, 32, 32, 32);
-
-            // Название теста
-            TextView title = new TextView(this);
             try {
-                title.setText(quiz.getString("name"));
+                moduleTitle.setText(quiz.getString("name"));
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
-            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-            title.setTypeface(null, Typeface.BOLD);
-            title.setTextColor(Color.DKGRAY);
-            layout.addView(title);
+            progressBar.setVisibility(View.GONE);
 
-            // Добавляем информационные блоки
+            // Создаем карточку для информации о тесте
+            MaterialCardView quizCard = createContentCard();
+            LinearLayout cardLayout = (LinearLayout) quizCard.getChildAt(0);
+
+            // Добавляем информационные строки
             try {
-                addInfoRow(layout, "Макс. попыток", String.valueOf(quiz.getInt("attempts")));
+                addInfoRow(cardLayout, "Макс. попыток", String.valueOf(quiz.getInt("attempts")));
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
             try {
-                addInfoRow(layout, "Лимит времени", quiz.getInt("timelimit") + " мин");
+                addInfoRow(cardLayout, "Лимит времени", quiz.getInt("timelimit") + " мин");
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
             try {
-                addInfoRow(layout, "Макс. оценка", String.valueOf(quiz.getDouble("grade")));
+                addInfoRow(cardLayout, "Макс. оценка", String.valueOf(quiz.getDouble("grade")));
             } catch (JSONException e) {
                 throw new RuntimeException(e);
             }
 
             // Добавляем статусы доступа
-            addStatusRow(layout, "Прохождение", canAttempt);
-            addStatusRow(layout, "Предпросмотр", canPreview);
-            addStatusRow(layout, "Просмотр результатов", canReview);
+            addStatusRow(cardLayout, "Прохождение", canAttempt);
+            addStatusRow(cardLayout, "Предпросмотр", canPreview);
+            addStatusRow(cardLayout, "Просмотр результатов", canReview);
 
-            card.addView(layout);
-            container.addView(card);
-            progressBar.setVisibility(View.GONE);
+            contentLayout.addView(quizCard);
         });
     }
 
@@ -946,17 +1001,20 @@ public class ModuleDetailActivity extends AppCompatActivity {
         TextView tv = new TextView(this);
         tv.setText(String.format("%s: %s", label, value));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tv.setTextColor(Color.parseColor("#616161"));
-        tv.setPadding(0, 16, 0, 0);
+        tv.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        tv.setPadding(0, 8, 0, 0);
         parent.addView(tv);
     }
+
 
     private void addStatusRow(LinearLayout parent, String label, boolean status) {
         TextView tv = new TextView(this);
         tv.setText(String.format("• %s: %s", label, status ? "✅ Доступно" : "❌ Недоступно"));
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        tv.setTextColor(status ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828"));
-        tv.setPadding(0, 8, 0, 0);
+        tv.setTextColor(status ?
+                ContextCompat.getColor(this, R.color.colorStatusCompleted) :
+                ContextCompat.getColor(this, R.color.colorStatusLate));
+        tv.setPadding(0, 12, 0, 0);
         parent.addView(tv);
     }
 
@@ -1204,10 +1262,13 @@ public class ModuleDetailActivity extends AppCompatActivity {
 
     private class LoadImageTask extends AsyncTask<String, Void, Drawable> {
         private final URLDrawable urlDrawable;
+        private final WeakReference<TextView> textViewRef; // Слабая ссылка на TextView
+
         private final String baseUrl = "https://stud.lms.tpu.ru";
 
-        public LoadImageTask(URLDrawable urlDrawable) {
+        public LoadImageTask(URLDrawable urlDrawable, TextView textView) {
             this.urlDrawable = urlDrawable;
+            this.textViewRef = new WeakReference<>(textView);
         }
 
         @Override
@@ -1266,11 +1327,10 @@ public class ModuleDetailActivity extends AppCompatActivity {
                 result.setBounds(0, 0,
                         result.getIntrinsicWidth(),
                         result.getIntrinsicHeight());
-
+                TextView targetTextView = textViewRef.get();
+                if (targetTextView == null || result == null) return;
                 urlDrawable.drawable = result;
-
-                // Исправленный код:
-                CharSequence currentText = contentScrollView.getText();
+                CharSequence currentText = targetTextView.getText();
                 SpannableStringBuilder spannableBuilder;
 
                 if (currentText instanceof Spannable) {
@@ -1290,7 +1350,7 @@ public class ModuleDetailActivity extends AppCompatActivity {
                     }
                 }
 
-                contentScrollView.setText(spannableBuilder);
+                targetTextView.setText(spannableBuilder);
             }
         }
     }

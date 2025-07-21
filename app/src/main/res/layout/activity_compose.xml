@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:fitsSystemWindows="true"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:fillViewport="true">
 
     <LinearLayout
@@ -12,10 +13,12 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- Action Buttons -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
 
             <ProgressBar
                 android:id="@+id/progressBar"
@@ -29,31 +32,49 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Добавьте файл" />
+                android:text="Добавить файл"
+                style="@style/Widget.Material3.Button.OutlinedButton"/>
 
             <Button
                 android:id="@+id/sendButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Отправить" />
+                android:text="Отправить"
+                style="@style/Widget.Material3.Button"
+                android:layout_marginStart="8dp"/>
         </LinearLayout>
 
-        <EditText
-            android:id="@+id/toEditText"
+        <!-- Recipient Field -->
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Кому"
-            android:inputType="textEmailAddress" />
+            android:layout_marginBottom="16dp"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
-        <EditText
-            android:id="@+id/subjectEditText"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/toEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Кому"
+                android:inputType="textEmailAddress"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Subject Field -->
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Тема" />
+            android:layout_marginBottom="16dp"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
-        <!-- Контейнер для вложений -->
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/subjectEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Тема"/>
+        </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- Message Body Container -->
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="match_parent">
@@ -61,36 +82,49 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" >
+                android:orientation="vertical">
 
-                <EditText
-                    android:id="@+id/bodyEditText"
+                <!-- EditText for plain text -->
+                <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:gravity="top"
-                    android:hint="Сообщение"
-                    android:inputType="textMultiLine"
-                    android:minHeight="200dp" />
+                    android:layout_height="wrap_content"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    android:layout_marginBottom="16dp">
 
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/bodyEditText"
+                        android:layout_width="match_parent"
+                        android:layout_height="200dp"
+                        android:gravity="top"
+                        android:hint="Сообщение"
+                        android:inputType="textMultiLine"/>
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- WebView for HTML content -->
                 <WebView
                     android:id="@+id/bodyWebView"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="200dp"
+                    android:visibility="gone"/>
 
+                <!-- Attachments Header -->
                 <TextView
                     android:id="@+id/textView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Вложения:" />
+                    android:text="Вложения:"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp"
+                    android:textColor="?attr/colorOnSurface"/>
 
+                <!-- Attachments Container -->
                 <LinearLayout
                     android:id="@+id/attachmentsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical"/>
             </LinearLayout>
         </ScrollView>
-
     </LinearLayout>
 </ScrollView>

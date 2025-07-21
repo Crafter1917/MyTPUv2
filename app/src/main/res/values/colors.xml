@@ -23,4 +23,8 @@
     <color name="link_color">#82B1FF</color>
     <color name="light_gray">#D0D0D0</color>
     <color name="backroundalarm">#F0F0F0</color>
+    <color name="colorStatusNotStarted">#FF9800</color>
+    <color name="colorStatusInProgress">#2196F3</color>
+    <color name="colorStatusCompleted">#4CAF50</color>
+    <color name="colorStatusLate">#F44336</color>
 </resources>

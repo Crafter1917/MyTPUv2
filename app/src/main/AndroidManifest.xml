@@ -12,12 +12,19 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="com.oppo.permission.safe.auto_start" />
+    <uses-permission android:name="android.permission.OP_AUTO_START" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"
         tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
@@ -37,11 +44,16 @@
         android:hardwareAccelerated="true"
         tools:targetApi="31">
         <profileable android:shell="true" />
-
+        <activity
+            android:name=".moodle.AssignmentDetailActivity"
+            android:label="Детали задания"
+            android:theme="@style/Theme.MyTPU"
+            android:exported="false">
+        </activity>
         <receiver
             android:name=".mailTPU.MailReceiver"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
@@ -51,25 +63,40 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge"
             tools:ignore="ForegroundServicePermission" />
+        <service
+            android:name=".schedule.AlarmService"
+            android:exported="true"
+            android:enabled="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <activity
             android:name=".schedule.FullscreenAlarmActivity"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleTask"
             android:exported="true"
-            android:theme="@style/Theme.MyTPU">
-            <!-- УДАЛИТЬ intent-filter -->
+            android:launchMode="singleTask"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:theme="@style/Theme.MyTPU.FullscreenAlarm"
+            android:turnScreenOn="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
         </activity>
+
         <activity
             android:name=".moodle.QuizAttemptActivity"
             android:label="Тест"
             android:theme="@style/Theme.MyTPU"/>
+
         <receiver
             android:name=".schedule.AlarmReceiver"
             android:enabled="true"
-            android:exported="false"/>
+            android:exported="true">
+            <intent-filter>
+                <action android:name="ALARM_DISMISSED" />
+                <action android:name="DISMISS_ALARM" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         <activity
             android:name=".mailTPU.MailActivity"
             android:label="Почта ТПУ"

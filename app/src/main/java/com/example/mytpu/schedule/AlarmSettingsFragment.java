@@ -1,5 +1,6 @@
 package com.example.mytpu.schedule;
 
+import static android.app.Activity.RESULT_CANCELED;
 import static android.app.Activity.RESULT_OK;
 import static com.example.mytpu.schedule.ScheduleActivity.REQUEST_CODE_ALARM_SOUND;
 
@@ -30,6 +31,8 @@ public class AlarmSettingsFragment extends Fragment {
     private int alarmMinutes = 30;
     private boolean alarmEnabled = true;
     private boolean notificationsEnabled = true;
+    private String selectedSoundTitle = "Выбрать звук"; // Добавляем переменную для хранения названия
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 
@@ -63,7 +66,8 @@ public class AlarmSettingsFragment extends Fragment {
         timePicker.setMinute(alarmMinutes);
         switchAlarm.setChecked(alarmEnabled);
         switchNotifications.setChecked(notificationsEnabled);
-
+        selectedSoundTitle = prefs.getString("alarm_sound_title", "Выбрать звук");
+        btnSelectSound.setText(selectedSoundTitle); // Устанавливаем текст кнопки
         // Обновляем переменные при изменении
         timePicker.setOnTimeChangedListener((view1, hourOfDay, minute) -> {
             alarmHours = hourOfDay;
@@ -99,13 +103,15 @@ public class AlarmSettingsFragment extends Fragment {
         return notificationsEnabled;
     }
 
+    // AlarmSettingsFragment.java
     private void selectAlarmSound() {
         Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
         intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM);
-        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Выберите звук будильника");
+        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, selectedSoundTitle);
 
         SharedPreferences prefs = requireContext().getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
         String soundUri = prefs.getString("alarm_sound_uri", null);
+
         if (soundUri != null) {
             intent.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(soundUri));
         }
@@ -115,15 +121,26 @@ public class AlarmSettingsFragment extends Fragment {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_CODE_ALARM_SOUND && resultCode == RESULT_OK && data != null) {
-            Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
-            if (ringtoneUri != null) {
-                Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), ringtoneUri);
-                btnSelectSound.setText(ringtone.getTitle(requireContext()));
-
-                SharedPreferences prefs = requireContext().getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
-                prefs.edit().putString("alarm_sound_uri", ringtoneUri.toString()).apply();
+        if (requestCode == REQUEST_CODE_ALARM_SOUND) {
+            SharedPreferences prefs = requireContext().getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
+            if (resultCode == RESULT_OK && data != null) {
+                Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+                if (ringtoneUri != null) {
+                    Ringtone ringtone = RingtoneManager.getRingtone(requireContext(), ringtoneUri);
+                    selectedSoundTitle = ringtone.getTitle(requireContext());
+                    prefs.edit()
+                            .putString("alarm_sound_uri", ringtoneUri.toString())
+                            .putString("alarm_sound_title", selectedSoundTitle)
+                            .apply();
+                } else {
+                    selectedSoundTitle = "Без звука";
+                    prefs.edit()
+                            .remove("alarm_sound_uri")
+                            .putString("alarm_sound_title", selectedSoundTitle)
+                            .apply();
+                }
             }
+            btnSelectSound.setText(selectedSoundTitle);
         }
     }
 }

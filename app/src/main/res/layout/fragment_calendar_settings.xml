@@ -81,9 +81,27 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-
             android:text="Синхронизирует расписание каждый понедельник в 00:30"
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="12sp" />
+
+        <!-- Кнопка управления аккаунтом -->
+        <Button
+            android:id="@+id/btnManageAccount"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Управление аккаунтом Google"
+            android:textColor="@color/textPrimary" />
+
+        <!-- Статус аккаунта -->
+        <TextView
+            android:id="@+id/tvAccountStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="14sp"/>
     </LinearLayout>
 </ScrollView>

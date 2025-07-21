@@ -1,6 +1,9 @@
 package com.example.mytpu;
+import static com.example.mytpu.PermissionManager.requestManufacturerPermissions;
 import static org.chromium.base.ThreadUtils.runOnUiThread;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -246,5 +249,4 @@ public class MainScreen extends Fragment {
         runOnUiThread(() -> Toast.makeText(requireActivity(), message, Toast.LENGTH_SHORT).show());
     }
 
-    // Остальные методы с корректировкой контекста (getActivity() вместо getActivity())
 }

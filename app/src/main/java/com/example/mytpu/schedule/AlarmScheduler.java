@@ -25,14 +25,14 @@ public class AlarmScheduler {
     private static final String TAG = "AlarmScheduler";
     private static final String PREFS_NAME = "AlarmPrefs";
 
-    @SuppressLint("ScheduleExactAlarm")
-    @RequiresPermission(Manifest.permission.SCHEDULE_EXACT_ALARM)
+
     public static void scheduleAlarms(Context context, List<ScheduleActivity.LessonData> lessons, int minutesBefore) {
         Log.d(TAG, "Starting alarm scheduling...");
-        cancelAllAlarms(context);
 
-        // Сбрасываем флаги отключения для сегодняшнего дня
+        // Сбрасываем флаги отключения для нового дня
         resetDismissedAlarms(context);
+
+        cancelAllAlarms(context);
 
         if (lessons == null || lessons.isEmpty()) {
             Log.d(TAG, "No lessons to schedule alarms");
@@ -41,16 +41,38 @@ public class AlarmScheduler {
 
         // Фильтрация уроков на сегодня
         List<ScheduleActivity.LessonData> todayLessons = getFirstLessonsForToday(lessons);
-
         if (todayLessons.isEmpty()) {
             Log.d(TAG, "No lessons found for today");
             return;
         }
 
         Log.d(TAG, "Found " + todayLessons.size() + " lessons for today");
-
         for (ScheduleActivity.LessonData lesson : todayLessons) {
-            scheduleLessonAlarm(context, lesson, minutesBefore);
+            scheduleLessonAlarm(context, lesson);
+        }
+    }
+
+    public static void resetDismissedAlarms(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
+        String todayKey = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        String lastResetDay = prefs.getString("last_reset_day", "");
+
+        // Сбрасываем флаги только при смене дня
+        if (!todayKey.equals(lastResetDay)) {
+            SharedPreferences.Editor editor = prefs.edit();
+
+            // Удаляем все флаги отключения
+            for (String key : prefs.getAll().keySet()) {
+                if (key.endsWith("_dismissed")) {
+                    editor.remove(key);
+                    Log.d(TAG, "Removed dismissed alarm flag: " + key);
+                }
+            }
+
+            // Сохраняем текущий день как день последнего сброса
+            editor.putString("last_reset_day", todayKey);
+            editor.apply();
+            Log.d(TAG, "Reset dismissed alarms for new day: " + todayKey);
         }
     }
 
@@ -93,9 +115,10 @@ public class AlarmScheduler {
     }
 
     @SuppressLint("ScheduleExactAlarm")
-    private static void scheduleLessonAlarm(Context context, ScheduleActivity.LessonData lesson, int minutesBefore) {
+    private static void scheduleLessonAlarm(Context context, ScheduleActivity.LessonData lesson) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
+        // Проверка разрешения для Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 Log.e(TAG, "Cannot schedule exact alarms: permission missing");
@@ -103,68 +126,134 @@ public class AlarmScheduler {
             }
         }
 
-        // Устанавливаем время срабатывания
-        Calendar alarmTime = Calendar.getInstance();
-        alarmTime.setTime(lesson.startTime);
-        alarmTime.add(Calendar.MINUTE, -minutesBefore);
+        // Получаем время будильника из настроек
+        SharedPreferences alarmPrefs = context.getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
+        int alarmMinutesBefore = alarmPrefs.getInt("alarm_minutes", 30); // 30 минут по умолчанию
 
-        Log.d(TAG, String.format(Locale.getDefault(),
-                "Scheduling alarm for lesson: %s at %tR (alarm at %tR, %d minutes before)",
-                lesson.subject, lesson.startTime, alarmTime, minutesBefore));
-        if (alarmTime.getTimeInMillis() < System.currentTimeMillis()) {
-            Log.d(TAG, "Skipping past alarm for: " + lesson.subject);
+        // 1. Полноэкранный будильник (время: начало пары - alarmMinutesBefore)
+        Calendar fullscreenTime = Calendar.getInstance();
+        fullscreenTime.setTime(lesson.startTime);
+        fullscreenTime.add(Calendar.MINUTE, -alarmMinutesBefore);
+
+        // Защита от установки в прошлом
+        if (fullscreenTime.getTimeInMillis() < System.currentTimeMillis()) {
+            Log.d(TAG, "Adjusting fullscreen alarm to future");
+            fullscreenTime.setTimeInMillis(System.currentTimeMillis() + 1000); // +1 секунда
+        }
+
+        Log.d(TAG, "Fullscreen alarm time: "
+                + fullscreenTime.get(Calendar.HOUR_OF_DAY) + ":"
+                + fullscreenTime.get(Calendar.MINUTE)
+                + " for " + lesson.subject);
+
+        Intent fullscreenIntent = new Intent(context, AlarmService.class);
+        fullscreenIntent.putExtra("para_number", lesson.paraNumber);
+        fullscreenIntent.putExtra("lesson_time", lesson.time);
+        fullscreenIntent.putExtra("lesson_subject", lesson.subject);
+        fullscreenIntent.putExtra("lesson_audience", lesson.audience);
+        fullscreenIntent.putExtra("lesson_start_time", lesson.startTime.getTime()); // Добавлено
+
+
+        PendingIntent fullscreenPendingIntent = PendingIntent.getService(
+                context,
+                lesson.paraNumber * 100 + 1,
+                fullscreenIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        // Установка будильника
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    fullscreenTime.getTimeInMillis(),
+                    fullscreenPendingIntent
+            );
+        } else {
+            alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    fullscreenTime.getTimeInMillis(),
+                    fullscreenPendingIntent
+            );
+        }
+
+        // 2. Предварительное уведомление (за 1 минут до полноэкранного будильника)
+        Calendar notificationTime = (Calendar) fullscreenTime.clone();
+        notificationTime.add(Calendar.MINUTE, -10);
+
+        // Защита от установки в прошлом
+        if (notificationTime.getTimeInMillis() < System.currentTimeMillis()) {
+            Log.d(TAG, "Skipping past notification for: " + lesson.subject);
             return;
         }
-        // Создаем интент для будильника
-        Intent intent = new Intent(context, AlarmReceiver.class);
-        intent.putExtra("para_number", lesson.paraNumber);
-        intent.putExtra("lesson_time", lesson.time);
-        intent.putExtra("lesson_subject", lesson.subject);
-        intent.putExtra("lesson_audience", lesson.audience);
 
-        int requestCode = lesson.paraNumber; // Уникальный код для каждой пары
+        Log.d(TAG, "Notification time: "
+                + notificationTime.get(Calendar.HOUR_OF_DAY) + ":"
+                + notificationTime.get(Calendar.MINUTE)
+                + " for " + lesson.subject);
 
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+        // Для уведомления используем BroadcastReceiver
+        Intent notificationIntent = new Intent(context, AlarmReceiver.class);
+        notificationIntent.putExtra("para_number", lesson.paraNumber);
+        notificationIntent.putExtra("lesson_time", lesson.time);
+        notificationIntent.putExtra("lesson_subject", lesson.subject);
+        notificationIntent.putExtra("lesson_audience", lesson.audience);
+        notificationIntent.putExtra("is_fullscreen", false);
+        notificationIntent.putExtra("lesson_start_time", lesson.startTime.getTime());
+
+        // Уникальный requestCode с использованием даты и номера пары
+        String todayKey = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
+        int uniqueRequestCode = (todayKey + lesson.paraNumber).hashCode() & 0xffff;
+
+        PendingIntent notificationPendingIntent = PendingIntent.getBroadcast(
                 context,
-                requestCode,
-                intent,
+                uniqueRequestCode,  // Уникальный код
+                notificationIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // Устанавливаем точный будильник
-        alarmManager.setExact(
-                AlarmManager.RTC_WAKEUP,
-                alarmTime.getTimeInMillis(),
-                pendingIntent
-        );
+        // Установка будильника для уведомления
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    notificationTime.getTimeInMillis(),
+                    notificationPendingIntent
+            );
+        } else {
+            alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    notificationTime.getTimeInMillis(),
+                    notificationPendingIntent
+            );
+        }
     }
 
     public static void cancelAllAlarms(Context context) {
         Log.d(TAG, "Canceling all alarms");
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+
         for (int i = 1; i <= 6; i++) {
+            // 1. Уведомление
+            Intent notificationIntent = new Intent(context, AlarmReceiver.class);
+            PendingIntent notificationPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    i * 100,
+                    notificationIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            alarmManager.cancel(notificationPendingIntent);
+
+            // 2. Полноэкранный будильник
             Intent intent = new Intent(context, AlarmReceiver.class);
+            intent.putExtra("cancel_all", true);
+
+            // Отменяем все совпадающие PendingIntent
             PendingIntent pendingIntent = PendingIntent.getBroadcast(
                     context,
-                    i,
+                    0,
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
             alarmManager.cancel(pendingIntent);
         }
-    }
-    private static void resetDismissedAlarms(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences("AlarmPrefs", Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = prefs.edit();
-
-        // Удаляем все флаги для текущего дня
-        String todayKey = new SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(new Date());
-        for (String key : prefs.getAll().keySet()) {
-            if (key.startsWith(todayKey)) {
-                editor.remove(key);
-            }
-        }
-        editor.apply();
     }
 
     public static boolean isAlarmEnabled(Context context) {

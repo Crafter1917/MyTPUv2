@@ -1,18 +1,18 @@
-<!-- Заменим FrameLayout на CoordinatorLayout для лучшей работы с прогресс-баром -->
+<?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:fitsSystemWindows="true"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+    android:fitsSystemWindows="true">
 
-    <ScrollView
+    <!-- Main Content -->
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true">
 
-        <!-- Добавим горизонтальные отступы для контента -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -20,46 +20,59 @@
             android:paddingHorizontal="16dp"
             android:paddingVertical="8dp">
 
-            <!-- Улучшим отображение заголовков -->
+            <!-- Sender -->
             <TextView
                 android:id="@+id/senderTextView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="16sp"/>
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?android:attr/textColorPrimary"/>
 
-            <!-- Внутри LinearLayout после senderTextView -->
+            <!-- Subject -->
             <TextView
                 android:id="@+id/subjectTextView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="18sp"
+                android:textAppearance="?attr/textAppearanceHeadlineSmall"
                 android:textStyle="bold"
-                android:layout_marginTop="8dp"/>
+                android:layout_marginTop="8dp"
+                android:textColor="?android:attr/textColorPrimary"/>
 
-
+            <!-- Date -->
             <TextView
                 android:id="@+id/dateTextView"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="14sp"
-                android:layout_marginTop="4dp"/>
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:layout_marginTop="4dp"
+                android:textColor="?android:attr/textColorSecondary"/>
 
-            <Button
-                android:id="@+id/allowRemoteButton"
+            <!-- Allow Remote Button -->
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:backgroundTint="@color/colorPrimary"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:text="@string/allow_remote_resources"
-                android:textColor="@android:color/white"
-                android:visibility="gone"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/dateTextView" />
+                android:layout_gravity="center"
+                android:visibility="visible"
+                app:cardCornerRadius="12dp"
+                app:layout_behavior="com.google.android.material.behavior.HideBottomViewOnScrollBehavior">
+
+                <Button
+                    android:id="@+id/allowRemoteButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:backgroundTint="?attr/colorPrimary"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:text="@string/allow_remote_resources"
+                    android:textColor="?attr/colorPrimary"
+                    android:visibility="gone" />
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Email Content -->
             <FrameLayout
                 android:id="@+id/content_frame"
                 android:layout_width="match_parent"
@@ -69,10 +82,10 @@
                 <WebView
                     android:id="@+id/webView"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    />
+                    android:layout_height="wrap_content"/>
             </FrameLayout>
-            <!-- Уберите дублирующиеся контейнеры и переместите RecyclerView -->
+
+            <!-- Attachments Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -83,76 +96,84 @@
                     android:id="@+id/attachmentsLabel"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
                     android:text="Вложения"
-                    android:visibility="gone"/> <!-- Начальное состояние: скрыто -->
+                    android:visibility="gone"
+                    android:textColor="?android:attr/textColorPrimary"/>
 
                 <LinearLayout
                     android:id="@+id/CardLinearLayout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:minHeight="200dp"
-                    >
-                </LinearLayout>
+                    android:minHeight="200dp"/>
             </LinearLayout>
-
         </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
-
-
-    </ScrollView>
-
-
-    <androidx.cardview.widget.CardView
+    <!-- Reply Panel -->
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:cardCornerRadius="12dp"
         android:layout_margin="8dp"
-        android:layout_gravity="bottom">
+        android:layout_gravity="bottom"
+        app:layout_behavior="com.google.android.material.behavior.HideBottomViewOnScrollBehavior"
+        app:behavior_peekHeight="56dp">
 
         <LinearLayout
             android:id="@+id/reply_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom"
             android:orientation="horizontal"
             android:padding="8dp"
+            android:gravity="center_vertical">
 
-            >
-
+            <!-- Forward Button (ImageButton) -->
             <ImageButton
                 android:id="@+id/forward_button"
-                style="@style/Widget.AppCompat.Button.Borderless"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/forward"
-                android:src="@drawable/ic_forward_24dp" />
+                android:src="@drawable/ic_forward_24dp"
+                app:tint="?attr/colorOnSurface"/>
 
-            <EditText
-                android:id="@+id/reply_edit_text"
+            <!-- Reply Input -->
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="@string/write_reply"
-                android:inputType="textMultiLine"
-                android:maxLines="3" />
+                android:layout_marginHorizontal="8dp"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/reply_edit_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/write_reply"
+                    android:inputType="textMultiLine"
+                    android:maxLines="3"/>
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Send Button (ImageButton) -->
             <ImageButton
                 android:id="@+id/send_button"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/send"
-                android:src="@drawable/ic_send_24dp" />
+                android:src="@drawable/ic_send_24dp"
+                app:tint="?attr/colorOnSurface"/>
         </LinearLayout>
-    </androidx.cardview.widget.CardView>
+    </com.google.android.material.card.MaterialCardView>
 
-
+    <!-- Progress Indicator -->
     <ProgressBar
         android:id="@+id/progressBar"
         style="?android:attr/progressBarStyleLarge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        />
-
+        android:indeterminateTint="?attr/colorPrimary"/>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

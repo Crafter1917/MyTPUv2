@@ -2,27 +2,27 @@ package com.example.mytpu.mailTPU;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.util.Log;
-
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
-
+import java.io.File;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 import okhttp3.Cookie;
 import okhttp3.CookieJar;
 import okhttp3.HttpUrl;
 
 // PersistentCookieJar.java
 public class PersistentCookieJar implements CookieJar {
-    private final SharedPreferences prefs;
+    private static SharedPreferences prefs;
 
     public PersistentCookieJar(Context context) {
+        if (prefs == null) {
         try {
+            File cookieFile = new File(context.getFilesDir(), "mail_cookies");
+            if (cookieFile.exists()) cookieFile.delete();
             String masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             prefs = EncryptedSharedPreferences.create(
                     "mail_cookies",
@@ -34,17 +34,17 @@ public class PersistentCookieJar implements CookieJar {
         } catch (Exception e) {
             throw new RuntimeException("CookieJar init failed", e);
         }
+        }
     }
 
+    // PersistentCookieJar.java
     @Override
     public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
         Set<String> cookieStrings = new HashSet<>();
         for (Cookie cookie : cookies) {
-            // Save only necessary session cookies
-            if (cookie.name().startsWith("roundcube_") && !cookie.persistent()) {
-                String cookieStr = cookie.toString();
-                cookieStrings.add(cookieStr);
-            }
+            // Сохраняем ВСЕ куки, а не только roundcube_
+            String cookieStr = cookie.toString();
+            cookieStrings.add(cookieStr);
         }
         prefs.edit().putStringSet("cookies", cookieStrings).apply();
     }

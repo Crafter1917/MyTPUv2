@@ -45,21 +45,15 @@ public class MainActivity extends AppCompatActivity
         setContentView(R.layout.activity_main_screen);
         portalAuthHelper = new PortalAuthHelper(this);
         fragmentContainer = findViewById(R.id.content_frame);
-
+        if (!PermissionManager.checkAllPermissions(this)) {
+            PermissionManager.requestPermissions(this);
+        }
         initSharedPreferences();
         setupToolbar();
         setupNavigation();
         checkAuthState();
     }
 
-    private void showTodaySchedule() {
-        unlockDrawer();
-        updateNavHeaderUsername();
-        getSupportFragmentManager().beginTransaction()
-                .replace(R.id.content_frame, new TodayScheduleFragment())
-                .commit();
-
-    }
 
     private void updateMainContent() {
         unlockDrawer();
@@ -89,7 +83,12 @@ public class MainActivity extends AppCompatActivity
             Log.e("MainActivity", "Error initializing secure preferences", e);
         }
     }
-
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        PermissionManager.onRequestPermissionsResult(this, requestCode, permissions, grantResults);
+    }
     private void setupToolbar() {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -226,6 +225,12 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
+
+        // Проверяем разрешения только если они не были предоставлены
+        if (!PermissionManager.checkAllPermissions(this)) {
+            PermissionManager.requestPermissions(this);
+        }
+
         refreshContent();
     }
 

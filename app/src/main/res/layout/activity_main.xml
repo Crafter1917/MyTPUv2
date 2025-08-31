@@ -76,6 +76,10 @@
                     android:textSize="12sp"/>
             </androidx.core.widget.NestedScrollView>
         </com.google.android.material.card.MaterialCardView>
-
+        <!-- Добавляем в конец LinearLayout -->
+        <TextView
+            android:id="@+id/versionText"
+           android:layout_height="0sp" android:layout_width="0sp"/>
     </LinearLayout>
+
 </ScrollView>

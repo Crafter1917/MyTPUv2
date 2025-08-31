@@ -1,11 +1,24 @@
 package com.example.mytpu.schedule;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
-
 import android.accounts.Account;
 import android.app.ActivityManager;
-import android.app.AlarmManager;
+import java.io.FileNotFoundException;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import com.example.mytpu.schedule.CookieManager;
+import com.example.mytpu.schedule.TPUScheduleParser;
+import java.security.MessageDigest;
+import android.util.Base64;
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
@@ -13,7 +26,6 @@ import android.content.ContentUris;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Typeface;
-import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.Handler;
 import android.provider.Settings;
@@ -55,30 +67,31 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
-
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
+import android.widget.Toast;
 import java.io.File;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Pattern;
-
 import com.example.mytpu.R;
 import com.google.android.gms.common.AccountPicker;
 import com.google.android.material.tabs.TabLayout;
@@ -95,6 +108,7 @@ public class ScheduleActivity extends AppCompatActivity {
     private boolean isScrollingRight = true;
     private int lastWheelWeek = -1;
     private int lastWheelYear = -1;
+    private CookieManager cookieManager;
     private AutoCompleteTextView searchField;
     private ImageButton btnSearchToggle;
     private boolean isLoading = false;
@@ -104,7 +118,9 @@ public class ScheduleActivity extends AppCompatActivity {
     private ExecutorService executor;
     private int selectedYear, selectedWeek;
     private String jsonDataOfSite;
-    private boolean cWN;
+    private static final String SCHEDULE_URL = "https://rasp.tpu.ru/gruppa_43908/2025/1/view.html";
+    private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
+    private static final String BASE_URL = "https://rasp.tpu.ru/";
     private final Map<String, LinearLayout> paraContainers = new HashMap<>();
     private ArrayAdapter<String> searchAdapter;
     private ArrayList<String> allGroups = new ArrayList<>();
@@ -115,6 +131,12 @@ public class ScheduleActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "SearchPrefs";
     private static final String KEY_LAST_SEARCH = "last_search";
     private static final String KEY_SEARCH_TYPE = "search_type";
+    private static final String SCHEDULE_FILE = "schedule.json";
+    private static final String HASH_PREFS = "ScheduleHashes";
+    private static final long CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 часа
+    private static final String LAST_CHECK_KEY = "last_check";
+    private static final String FULL_HASH_KEY = "full_hash";
+    private static final String GROUP_HASH_PREFIX = "group_hash_";
     private ProgressBar progressBar;
     private CardView searchCard;
     private RecyclerView weekWheel;
@@ -126,60 +148,568 @@ public class ScheduleActivity extends AppCompatActivity {
     private boolean isKeyboardVisible = false;
     private final ConcurrentHashMap<String, List<LessonData>> groupedLessonsMap = new ConcurrentHashMap<>();
     private final Object lock = new Object(); // Добавить объект для синхронизации
-    private static final String API_URL = "http://uti.tpu.ru/timetable_import.json";
     private List<CardView> dayCards = new ArrayList<>();
     private List<TextView> dayHeaders = new ArrayList<>();
     private List<LinearLayout> lessonContainers = new ArrayList<>();
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        // Исправленный код для обработки звука будильника
-        if (requestCode == REQUEST_CODE_ALARM_SOUND && resultCode == RESULT_OK) {
-            Uri ringtoneUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
-            if (ringtoneUri != null) {
-                SharedPreferences prefs = getSharedPreferences("AlarmPrefs", MODE_PRIVATE);
-                prefs.edit().putString("alarm_sound_uri", ringtoneUri.toString()).apply();
-            }
+    private static final String SOURCE_UTI = "УТИ ТПУ";
+    private static final String SOURCE_TPU = "ТПУ";
+    private static final String SOURCE_PREFS = "SourcePrefs";
+    private static final String KEY_SOURCE = "source";
+    static final int REQUEST_CAPTCHA = 1002;
+    private Spinner sourceSpinner;
+    private String currentSource = SOURCE_UTI;
+    private AlertDialog captchaDialog;
+    private TPUScheduleParser tpuParser;
+    private List<TPUScheduleParser.School> tpuSchools;
+    private List<TPUScheduleParser.Group> tpuGroups;
+    private Handler checkHandler = new Handler();
+    private Runnable checkRunnable = new Runnable() {
+        @Override
+        public void run() {
+            checkForScheduleUpdates();
+            checkHandler.postDelayed(this, CHECK_INTERVAL);
         }
-        else if (requestCode == ACCOUNT_REQUEST_CODE) {
-            Log.d(TAG, "Returned from account addition flow");
-            if (resultCode == RESULT_OK) {
-                // После успешного добавления аккаунта пробуем синхронизировать
-                new Handler().postDelayed(() -> {
-                    if (hasGoogleAccount()) {
-                        syncWithGoogleCalendar();
-                    } else {
-                        Log.w(TAG, "Account still not found after addition");
-                    }
-                }, 2000);
+    };
+
+    private void stopScheduleChecker() {
+        checkHandler.removeCallbacks(checkRunnable);
+    }
+    private void updateGroupsSpinner(List<TPUScheduleParser.Group> groups) {
+        runOnUiThread(() -> {
+            Spinner groupsSpinner = findViewById(R.id.groupsSpinner);
+            if (groupsSpinner == null) {
+                Log.e(TAG, "Groups spinner is null!");
+                return;
             }
+
+            List<String> groupNames = new ArrayList<>();
+            groupNames.add("Не выбрано"); // Добавляем пункт по умолчанию
+
+            if (groups != null) {
+                for (TPUScheduleParser.Group group : groups) {
+                    groupNames.add(group.name);
+                }
+            }
+
+            // Используем кастомный адаптер с marquee эффектом
+            MarqueeSpinnerAdapter adapter = new MarqueeSpinnerAdapter(this, groupNames);
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+            groupsSpinner.setAdapter(adapter);
+
+            groupsSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position > 0 && groups != null && position <= groups.size()) {
+                        String groupName = groupNames.get(position);
+                        currentSearchQuery = groupName;
+                        updateGroupsTextView(groupName);
+                        loadScheduleForGroup(groups.get(position - 1).id);
+                    } else {
+                        currentSearchQuery = "";
+                        updateGroupsTextView("");
+                        // Очищаем расписание
+                        clearScheduleContainers();
+                    }
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {
+                }
+            });
+        });
+    }
+
+    private void saveSchoolsAndGroups(List<TPUScheduleParser.School> schools) {
+        try {
+            SharedPreferences prefs = getSharedPreferences("TPUData", MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+
+            JSONArray schoolsArray = new JSONArray();
+            for (TPUScheduleParser.School school : schools) {
+                JSONObject schoolObj = new JSONObject();
+                schoolObj.put("id", school.id);
+                schoolObj.put("name", school.name);
+                schoolsArray.put(schoolObj);
+            }
+
+            editor.putString("schools", schoolsArray.toString());
+            editor.apply();
+            Log.d(TAG, "Schools saved successfully");
+        } catch (JSONException e) {
+            Log.e(TAG, "Error saving schools", e);
         }
     }
 
-    private void checkAccountWithRetry(int maxAttempts, long delayMillis) {
-        new Handler().postDelayed(new Runnable() {
-            int attempts = 0;
-            @Override
-            public void run() {
-                if (hasGoogleAccount()) {
-                    Log.d(TAG, "Account added successfully, syncing...");
-                    syncWithGoogleCalendar();
-                } else if (attempts < maxAttempts) {
-                    attempts++;
-                    Log.d(TAG, "Retry account check (" + attempts + "/" + maxAttempts + ")");
-                    new Handler().postDelayed(this, delayMillis);
-                } else {
-                    Log.w(TAG, "No Google account added after flow");
-                    runOnUiThread(() -> Toast.makeText(
-                            ScheduleActivity.this,
-                            "Аккаунт не был добавлен или не обнаружен",
-                            Toast.LENGTH_SHORT
-                    ).show());
+    private List<TPUScheduleParser.School> loadSchools() {
+        SharedPreferences prefs = getSharedPreferences("TPUData", MODE_PRIVATE);
+        String schoolsJson = prefs.getString("schools", "");
+
+        List<TPUScheduleParser.School> schools = new ArrayList<>();
+        try {
+            JSONArray array = new JSONArray(schoolsJson);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+                TPUScheduleParser.School school = new TPUScheduleParser.School();
+                school.id = obj.getString("id");
+                school.name = obj.getString("name");
+                schools.add(school);
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Error loading schools", e);
+        }
+
+        return schools;
+    }
+
+    private void loadScheduleForGroup(String groupId) {
+        if (groupId == null || groupId.isEmpty()) {
+            Log.e(TAG, "Group ID is null or empty");
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                int academicYear = AcademicCalendar.getAcademicYear(new Date());
+                Log.d(TAG, "Loading schedule for group: " + groupId + ", academic year: " + academicYear);
+
+                List<TPUScheduleParser.Schedule> yearSchedule = tpuParser.getFullYearSchedule(groupId, academicYear);
+
+                // Пропускаем ненужные операции если данные уже есть
+                if (yearSchedule == null || yearSchedule.isEmpty()) {
+                    runOnUiThread(() -> Toast.makeText(ScheduleActivity.this,
+                            "Не удалось загрузить расписание", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+
+                // Сразу обновляем интерфейс с полученными данными
+                runOnUiThread(() -> {
+                    // Очищаем предыдущие данные
+                    clearScheduleContainers();
+                    groupedLessonsMap.clear();
+
+                    // Парсим расписание напрямую
+                    parseTPUSchedule(yearSchedule);
+
+                    // Обновляем интерфейс
+                    updateDayDates();
+                    redrawScheduleUI();
+                    updateAlarms();
+                });
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading schedule", e);
+                runOnUiThread(() -> Toast.makeText(ScheduleActivity.this,
+                        "Ошибка загрузки расписания: " + e.getMessage(),
+                        Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private void parseTPUSchedule(List<TPUScheduleParser.Schedule> schedules) {
+        Log.d(TAG, "Starting parseTPUSchedule with " + schedules.size() + " weeks");
+        groupedLessonsMap.clear();
+        Arrays.fill(hasLessons, false);
+
+        int totalLessons = 0;
+        int convertedLessons = 0;
+
+        for (TPUScheduleParser.Schedule weekSchedule : schedules) {
+            int weekLessons = weekSchedule.days.stream().mapToInt(List::size).sum();
+            Log.d(TAG, "Processing week " + weekSchedule.weekNumber + " with " + weekLessons + " lessons");
+
+            for (int dayIndex = 0; dayIndex < weekSchedule.days.size(); dayIndex++) {
+                List<TPUScheduleParser.Lesson> dayLessons = weekSchedule.days.get(dayIndex);
+                for (TPUScheduleParser.Lesson lesson : dayLessons) {
+                    totalLessons++;
+                    try {
+                        LessonData lessonData = convertTPULessonToLessonData(lesson, dayIndex + 1,
+                                weekSchedule.weekNumber, weekSchedule.year);
+                        if (lessonData != null) {
+                            String key = lessonData.weekday + "|" + lessonData.time;
+                            if (!groupedLessonsMap.containsKey(key)) {
+                                groupedLessonsMap.put(key, new ArrayList<>());
+                            }
+                            Log.d(TAG, "Week " + weekSchedule.weekNumber + " day " + dayIndex +
+                                    " lessons: " + dayLessons.size());
+                            groupedLessonsMap.get(key).add(lessonData);
+                            hasLessons[dayIndex] = true;
+                            convertedLessons++;
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error converting lesson", e);
+                    }
                 }
             }
-        }, delayMillis);
+        }
+
+        Log.d(TAG, "Finished parseTPUSchedule. Total lessons: " + totalLessons +
+                ", converted lessons: " + convertedLessons +
+                ", groupedLessonsMap size: " + groupedLessonsMap.size());
+    }
+
+    private LessonData convertTPULessonToLessonData(TPUScheduleParser.Lesson tpuLesson,
+                                                    int weekday, int weekNumber, int year) {
+        try {
+            if (tpuLesson.subject == null || tpuLesson.subject.trim().isEmpty() ||
+                    tpuLesson.subject.equals("-") || tpuLesson.subject.equals("Не удалось расшифровать")) {
+                return null;
+            }
+
+            // Парсим время
+            String timeString = tpuLesson.time != null ? tpuLesson.time.replace("\n", " - ") : "";
+            String startTime = "";
+            String endTime = "";
+
+            if (timeString.contains("-")) {
+                String[] timeParts = timeString.split("-");
+                startTime = timeParts[0].trim();
+                endTime = timeParts[1].trim();
+            } else {
+                Pattern timePattern = Pattern.compile("(\\d{1,2}:\\d{2})");
+                Matcher matcher = timePattern.matcher(timeString);
+                List<String> times = new ArrayList<>();
+                while (matcher.find()) {
+                    times.add(matcher.group(1));
+                }
+                if (times.size() >= 2) {
+                    startTime = times.get(0);
+                    endTime = times.get(1);
+                }
+            }
+
+            if (startTime.isEmpty() || endTime.isEmpty()) {
+                return null;
+            }
+
+            // Создаем даты занятий
+            Calendar startCal = AcademicCalendar.getDateForWeekAndDay(year, weekNumber, weekday);
+            String[] startParts = startTime.split(":");
+            startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startParts[0]));
+            startCal.set(Calendar.MINUTE, Integer.parseInt(startParts[1]));
+
+            Calendar endCal = AcademicCalendar.getDateForWeekAndDay(year, weekNumber, weekday);
+            String[] endParts = endTime.split(":");
+            endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endParts[0]));
+            endCal.set(Calendar.MINUTE, Integer.parseInt(endParts[1]));
+
+            // Определяем номер пары
+            int paraNumber = determineParaNumber(startTime);
+
+            return new LessonData(
+                    startCal.getTime(),
+                    endCal.getTime(),
+                    tpuLesson.subject.trim(),
+                    tpuLesson.type != null ? tpuLesson.type.trim() : "",
+                    0, // subgroups - нужно получить из данных
+                    startTime + " - " + endTime,
+                    tpuLesson.location != null ? tpuLesson.location.trim() : "",
+                    tpuLesson.teacher != null ? tpuLesson.teacher.trim() : "",
+                    weekday,
+                    paraNumber,
+                    "" // group - будет установлено позже
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "Error converting lesson: " + e.getMessage());
+            return null;
+        }
+    }
+    private void checkForScheduleUpdates() {
+        if (currentSearchQuery.isEmpty()) {
+            Log.d(TAG, "checkForScheduleUpdates: currentSearchQuery is empty, skipping");
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                Log.d(TAG, "Starting schedule update check for group: " + currentSearchQuery);
+
+                // 1. Проверяем обновление полного расписания
+                String localFullHash = loadFullHash();
+                String serverFullHash = fetchScheduleHash();
+                Log.d(TAG, "Hash comparison: local=" + localFullHash + ", server=" + serverFullHash);
+
+                if (serverFullHash == null || serverFullHash.equals(localFullHash)) {
+                    Log.d(TAG, "No full schedule update needed");
+                    return;
+                }
+
+                // 2. Загружаем новое расписание
+                Log.d(TAG, "Full schedule update detected, fetching new schedule...");
+                String newJson = fetchFullSchedule();
+                if (newJson == null) {
+                    Log.e(TAG, "Failed to fetch new schedule");
+                    return;
+                }
+
+                // 3. Фильтруем для текущей группы
+                List<LessonData> filteredLessons = filterLessonsForGroup(newJson, currentSearchQuery);
+                String newGroupHash = calculateHash(filteredLessons.toString());
+                Log.d(TAG, "Filtered lessons count: " + filteredLessons.size());
+
+                // 4. Сравниваем с локальным хешем группы
+                String localGroupHash = loadGroupHash(currentSearchQuery);
+                Log.d(TAG, "Group hash comparison: local=" + localGroupHash + ", new=" + newGroupHash);
+
+                if (!newGroupHash.equals(localGroupHash)) {
+                    Log.d(TAG, "Group schedule changed, notifying user");
+                    showUpdateNotification();
+                    saveScheduleLocally(newJson);
+                    saveHashes(serverFullHash, newGroupHash);
+                } else {
+                    Log.d(TAG, "Group schedule not changed, updating full hash only");
+                    saveHashes(serverFullHash, localGroupHash);
+                }
+
+            } catch (Exception e) {
+                Log.e(TAG, "Update check failed", e);
+            }
+        });
+    }
+
+    private String fetchScheduleHash() {
+        try {
+            Log.d(TAG, "Fetching schedule hash from: " + SCHEDULE_URL);
+
+            // Загружаем cookies
+            Set<String> cookies = cookieManager.loadCookies();
+            Log.d(TAG, "Using cookies: " + Arrays.toString(cookies.toArray()));
+
+            // Создаем запрос с правильным URL и cookies
+            Request.Builder requestBuilder = new Request.Builder()
+                    .url(SCHEDULE_URL + "?hash=1");
+
+            // Добавляем cookies в заголовок
+            if (!cookies.isEmpty()) {
+                StringBuilder cookieHeader = new StringBuilder();
+                for (String cookie : cookies) {
+                    cookieHeader.append(cookie).append("; ");
+                }
+                requestBuilder.header("Cookie", cookieHeader.toString());
+                Log.d(TAG, "Sending cookies: " + cookieHeader.toString());
+            }
+
+            Request request = requestBuilder.build();
+            Response response = client.newCall(request).execute();
+
+            if (response.isSuccessful()) {
+                String hash = response.body().string();
+                Log.d(TAG, "Hash received: " + hash);
+                return hash;
+            } else {
+                Log.e(TAG, "Hash fetch failed: " + response.code());
+                return null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Hash fetch error", e);
+            return null;
+        }
+    }
+
+    private String fetchFullSchedule() {
+        try {
+            Request request = new Request.Builder()
+                    .url(API_URL)
+                    .build();
+
+            Response response = client.newCall(request).execute();
+            return response.body().string();
+        } catch (Exception e) {
+            Log.e(TAG, "Full schedule fetch error", e);
+            return null;
+        }
+    }
+
+    private List<LessonData> filterLessonsForGroup(String json, String group) {
+        List<LessonData> result = new ArrayList<>();
+        Log.d(TAG, "Filtering lessons for group: " + group);
+
+        if (json == null || json.isEmpty()) {
+            Log.e(TAG, "JSON is null or empty in filterLessonsForGroup");
+            return result;
+        }
+
+        try {
+            JSONObject root = new JSONObject(json);
+            JSONArray faculties = root.optJSONArray("faculties");
+            if (faculties == null) {
+                Log.w(TAG, "No faculties found in JSON");
+                return result;
+            }
+
+            for (int i = 0; i < faculties.length(); i++) {
+                JSONObject faculty = faculties.getJSONObject(i);
+                JSONArray groups = faculty.optJSONArray("groups");
+                if (groups == null) continue;
+
+                for (int j = 0; j < groups.length(); j++) {
+                    JSONObject groupObj = groups.getJSONObject(j);
+                    String groupName = groupObj.optString("name", "");
+                    if (groupName.equalsIgnoreCase(group)) {
+                        JSONArray lessons = groupObj.optJSONArray("lessons");
+                        if (lessons == null) continue;
+
+                        Log.d(TAG, "Found group: " + groupName + " with lessons: " + lessons.length());
+
+                        for (int k = 0; k < lessons.length(); k++) {
+                            LessonData lesson = parseLessonForGroup(lessons.getJSONObject(k), group);
+                            if (lesson != null) {
+                                result.add(lesson);
+                                Log.v(TAG, "Added lesson: " + lesson.subject);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Filtering error", e);
+        }
+
+        Log.d(TAG, "Total filtered lessons: " + result.size());
+        return result;
+    }
+
+    private LessonData parseLessonForGroup(JSONObject lesson, String groupName)
+            throws JSONException, ParseException {
+        JSONObject date = lesson.optJSONObject("date");
+        if (date == null) return null;
+        if (lesson.getString("subject").trim().isEmpty() ||
+                lesson.getString("subject").equals("-")) {
+            return null; // Пропускаем пустые уроки
+        }
+        String startDateStr = date.optString("start", "");
+        if (startDateStr.isEmpty()) return null;
+        SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+        Date lessonDate = sdf.parse(startDateStr);
+
+        JSONObject time = lesson.getJSONObject("time");
+        String startTime = time.getString("start");
+        String endTime = time.getString("end");
+
+        // Создаем календарь для времени начала
+        Calendar startCal = Calendar.getInstance();
+        startCal.setTime(lessonDate);
+        String[] startParts = startTime.split(":");
+        startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startParts[0]));
+        startCal.set(Calendar.MINUTE, Integer.parseInt(startParts[1]));
+
+        // Создаем календарь для времени окончания
+        Calendar endCal = Calendar.getInstance();
+        endCal.setTime(lessonDate);
+        String[] endParts = endTime.split(":");
+        endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endParts[0]));
+        endCal.set(Calendar.MINUTE, Integer.parseInt(endParts[1]));
+
+        int paraNumber = determineParaNumber(startTime + " - " + endTime);
+
+        return new LessonData(
+                startCal.getTime(),
+                endCal.getTime(),
+                lesson.getString("subject"),
+                lesson.getString("type"),
+                lesson.optInt("subgroups", 0),
+                startTime + " - " + endTime,
+                getAudience(lesson.getJSONArray("audiences")),
+                getTeacher(lesson.getJSONArray("teachers")),
+                date.getInt("weekday"),
+                paraNumber,
+                groupName
+        );
+    }
+
+    private String calculateHash(String input) {
+        Log.d(TAG, "Calculating hash for input: " + input.substring(0, Math.min(input.length(), 100)) + "...");
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            String hashString = Base64.encodeToString(hash, Base64.NO_WRAP);
+            Log.d(TAG, "Calculated hash: " + hashString);
+            return hashString;
+        } catch (Exception e) {
+            Log.e(TAG, "Hash calculation error", e);
+            return "";
+        }
+    }
+
+    private void saveHashes(String fullHash, String groupHash) {
+        Log.d(TAG, "Saving hashes: fullHash=" + fullHash + ", groupHash=" + groupHash);
+        SharedPreferences prefs = getSharedPreferences(HASH_PREFS, MODE_PRIVATE);
+        prefs.edit()
+                .putString(FULL_HASH_KEY, fullHash)
+                .putString(GROUP_HASH_PREFIX + currentSearchQuery, groupHash)
+                .putLong(LAST_CHECK_KEY, System.currentTimeMillis())
+                .apply();
+    }
+
+    private String loadFullHash() {
+        String hash = getSharedPreferences(HASH_PREFS, MODE_PRIVATE)
+                .getString(FULL_HASH_KEY, "");
+        Log.d(TAG, "Loaded full hash: " + hash);
+        return hash;
+    }
+
+    private String loadGroupHash(String group) {
+        String key = GROUP_HASH_PREFIX + group;
+        String hash = getSharedPreferences(HASH_PREFS, MODE_PRIVATE)
+                .getString(key, "");
+        Log.d(TAG, "Loaded group hash for " + group + ": " + hash);
+        return hash;
+    }
+
+    private void saveScheduleLocally(String json) {
+        Log.d(TAG, "Saving schedule locally, length: " + json.length());
+        try (FileOutputStream fos = openFileOutput(SCHEDULE_FILE, Context.MODE_PRIVATE)) {
+            fos.write(json.getBytes(StandardCharsets.UTF_8));
+            Log.i(TAG, "Schedule saved successfully");
+        } catch (Exception e) {
+            Log.e(TAG, "Local save failed", e);
+        }
+    }
+
+    private String loadLocalSchedule() {
+        try {
+            File file = new File(getFilesDir(), SCHEDULE_FILE);
+            if (!file.exists()) {
+                Log.d(TAG, "Local schedule file does not exist");
+                return null;
+            }
+
+            try (FileInputStream fis = openFileInput(SCHEDULE_FILE)) {
+                ByteArrayOutputStream result = new ByteArrayOutputStream();
+                byte[] buffer = new byte[1024];
+                int length;
+                while ((length = fis.read(buffer)) != -1) {
+                    result.write(buffer, 0, length);
+                }
+                return result.toString(StandardCharsets.UTF_8.name());
+            }
+        } catch (FileNotFoundException e) {
+            Log.d(TAG, "Local schedule file not found", e);
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Local schedule load failed", e);
+            return null;
+        }
+    }
+
+    private void showUpdateNotification() {
+        // Создаем уведомление
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+
+        Intent intent = new Intent(this, ScheduleActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, "schedule_updates")
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Обновление расписания")
+                .setContentText("Расписание для " + currentSearchQuery + " было изменено")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build();
+
+        if (manager != null) {
+            manager.notify(currentSearchQuery.hashCode(), notification);
+        }
     }
 
     private void showAddAccountDialog() {
@@ -208,8 +738,26 @@ public class ScheduleActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        checkPermissions();
         setContentView(R.layout.activity_schedule);
+        initHttpClient();
+        checkPermissions();
+        tpuSchools = loadSchools();
+        if (tpuSchools != null && !tpuSchools.isEmpty()) {
+            updateSchoolsSpinner(tpuSchools);
+        }
+        // Инициализируем CookieManager
+        cookieManager = new CookieManager(this);
+        tpuParser = new TPUScheduleParser(this);
+// Убедитесь, что парсер инициализирован
+        TPUScheduleParser parser = new TPUScheduleParser(this);
+        parser.loadCookies(); // Загружаем сохраненные куки
+        // Загрузка cookies
+        tpuParser.loadCookiesFromPrefs();
+
+        // Проверка источника данных
+        if (SOURCE_TPU.equals(currentSource)) {
+            loadTPUData();
+        }
         scheduleContainer = findViewById(R.id.scheduleContainer);
         if (scheduleContainer == null) {
             Log.e(TAG, "scheduleContainer not found!");
@@ -222,6 +770,13 @@ public class ScheduleActivity extends AppCompatActivity {
         } else {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
                     | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        }
+        jsonDataOfSite = loadLocalSchedule();
+
+        if (jsonDataOfSite != null) {
+            processDataInBackground(jsonDataOfSite);
+        } else {
+            loadSchedule(); // Загружаем с сервера
         }
         findViewById(R.id.btnSyncCalendar).setOnClickListener(v -> {
             checkPermission(
@@ -252,7 +807,88 @@ public class ScheduleActivity extends AppCompatActivity {
         updateGroupsTextView(currentSearchQuery);
         createDayCards();
         initViews();
-        initHttpClient();
+
+
+
+
+        // Настройка Spinner выбора источника
+        // Инициализация спиннеров
+        Spinner sourceSpinner = findViewById(R.id.sourceSpinner);
+        Spinner schoolsSpinner = findViewById(R.id.schoolsSpinner);
+        Spinner groupsSpinner = findViewById(R.id.groupsSpinner);
+
+// Установите адаптеры с пунктом "Не выбрано" по умолчанию
+        List<String> sourceOptions = new ArrayList<>();
+        sourceOptions.add("УТИ ТПУ");
+        sourceOptions.add("ТПУ");
+        ArrayAdapter<String> sourceAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, sourceOptions);
+        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        sourceSpinner.setAdapter(sourceAdapter);
+
+        List<String> defaultOptions = new ArrayList<>();
+        defaultOptions.add("Не выбрано");
+        ArrayAdapter<String> defaultAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, defaultOptions);
+        defaultAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        schoolsSpinner.setAdapter(defaultAdapter);
+        groupsSpinner.setAdapter(defaultAdapter);
+
+
+        // Восстановление выбранного источника
+        SharedPreferences sourcePrefs = getSharedPreferences(SOURCE_PREFS, MODE_PRIVATE);
+        currentSource = sourcePrefs.getString(KEY_SOURCE, SOURCE_UTI);
+
+        // Установка выбранного элемента
+        int position = sourceAdapter.getPosition(currentSource);
+        sourceSpinner.setSelection(position);
+
+        sourceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String newSource = parent.getItemAtPosition(position).toString();
+                if (!currentSource.equals(newSource)) {
+                    currentSource = newSource;
+
+                    SharedPreferences.Editor editor = getSharedPreferences(SOURCE_PREFS, MODE_PRIVATE).edit();
+                    editor.putString(KEY_SOURCE, currentSource);
+                    editor.apply();
+
+                    if (SOURCE_TPU.equals(currentSource)) {
+                        // Показываем спиннеры ТПУ, скрываем поиск УТИ
+                        findViewById(R.id.tpuSpinnersContainer).setVisibility(View.VISIBLE);
+                        findViewById(R.id.utiSearchContainer).setVisibility(View.GONE);
+
+                        // Загружаем данные ТПУ
+                        loadTPUData();
+                    } else {
+                        // Показываем поиск УТИ, скрываем спиннеры ТПУ
+                        findViewById(R.id.tpuSpinnersContainer).setVisibility(View.GONE);
+                        findViewById(R.id.utiSearchContainer).setVisibility(View.VISIBLE);
+
+                        // Загружаем данные УТИ
+                        loadScheduleFromUTI();
+                    }
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+// Принудительно обновляем интерфейс при запуске
+        runOnUiThread(() -> {
+            if (SOURCE_TPU.equals(currentSource)) {
+                findViewById(R.id.tpuSpinnersContainer).setVisibility(View.VISIBLE);
+                findViewById(R.id.utiSearchContainer).setVisibility(View.GONE);
+            } else {
+                findViewById(R.id.tpuSpinnersContainer).setVisibility(View.GONE);
+                findViewById(R.id.utiSearchContainer).setVisibility(View.VISIBLE);
+            }
+        });
+
+
+
         loadInitialWeek();
         setupSearchAutocomplete();
         updateSearchFieldBehavior();
@@ -277,11 +913,13 @@ public class ScheduleActivity extends AppCompatActivity {
         });
         btnSearchToggle.setOnClickListener(v -> toggleSearch());
         setupKeyboardListener();
-        if (jsonDataOfSite == null || jsonDataOfSite.isEmpty()) {
-            loadSchedule(); // Загружаем данные только если их нет
-        } else {
-            processDataInBackground(jsonDataOfSite); // Обрабатываем сохраненные данные
-        }
+        new Thread(() -> {
+            if (jsonDataOfSite == null || jsonDataOfSite.isEmpty()) {
+                loadSchedule();
+            }else {
+                processDataInBackground(jsonDataOfSite); // Обрабатываем сохраненные данные
+            }
+        }).start();
         View rootLayout = findViewById(R.id.root_layout); // Убедитесь, что ID корневого макета правильный
         rootLayout.setOnClickListener(v -> {
             if (isSearchExpanded) {
@@ -292,6 +930,121 @@ public class ScheduleActivity extends AppCompatActivity {
         setupWeekWheel();
         setupCurrentDateButton();
         setupSearchField();
+
+    }
+
+    private void loadGroupsForSchool(String schoolId) {
+        Log.d(TAG, "Loading groups for school ID: " + schoolId);
+        new Thread(() -> {
+            try {
+                List<TPUScheduleParser.Group> groups = tpuParser.getGroups(schoolId);
+                Log.d(TAG, "Groups loaded: " + (groups != null ? groups.size() : 0) + " groups");
+
+                if (groups == null || groups.isEmpty()) {
+                    // Проверяем валидность куков
+                    boolean isValid = tpuParser.checkCookiesValidity();
+                    runOnUiThread(() -> {
+                        if (!isValid) {
+                            // Запускаем CaptchaActivity
+                            Intent intent = new Intent(ScheduleActivity.this, CaptchaActivity.class);
+                            startActivityForResult(intent, REQUEST_CAPTCHA);
+                        } else {
+                            Toast.makeText(ScheduleActivity.this,
+                                    "Нет групп для выбранной школы",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                    return;
+                }
+
+                runOnUiThread(() -> {
+                    updateGroupsSpinner(groups);
+                });
+            } catch (IOException e) {
+                Log.e(TAG, "Error loading groups", e);
+                runOnUiThread(() -> {
+                    Toast.makeText(ScheduleActivity.this,
+                            "Ошибка загрузки групп: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                    updateGroupsSpinner(new ArrayList<TPUScheduleParser.Group>());
+                });
+            }
+        }).start();
+    }
+
+    private void updateSchoolsSpinner(List<TPUScheduleParser.School> schools) {
+        runOnUiThread(() -> {
+            Spinner schoolsSpinner = findViewById(R.id.schoolsSpinner);
+            if (schoolsSpinner == null) {
+                Log.e(TAG, "Schools spinner is null!");
+                return;
+            }
+
+            List<String> schoolNames = new ArrayList<>();
+            schoolNames.add("Не выбрано"); // Добавляем пункт по умолчанию
+
+            if (schools != null) {
+                for (TPUScheduleParser.School school : schools) {
+                    schoolNames.add(school.name);
+                }
+            }
+
+            // Используем кастомный адаптер с marquee эффектом
+            MarqueeSpinnerAdapter adapter = new MarqueeSpinnerAdapter(this, schoolNames);
+            schoolsSpinner.setAdapter(adapter);
+
+            // Обработчик выбора школы
+            schoolsSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position > 0 && schools != null && position <= schools.size()) {
+                        // Загружаем группы выбранной школы
+                        loadGroupsForSchool(schools.get(position - 1).id);
+                    } else {
+                        // Очищаем спиннер групп
+                        updateGroupsSpinner(new ArrayList<TPUScheduleParser.Group>());
+                    }
+                }
+
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {
+                }
+            });
+        });
+    }
+
+    private void loadTPUData() {
+        Log.d(TAG, "Loading TPU data");
+        new Thread(() -> {
+            try {
+                tpuSchools = tpuParser.getSchools();
+                Log.d(TAG, "Schools loaded: " + (tpuSchools != null ? tpuSchools.size() : 0) + " schools");
+
+                // Сохраняем школы после успешной загрузки
+                if (tpuSchools != null && !tpuSchools.isEmpty()) {
+                    saveSchoolsAndGroups(tpuSchools);
+                }
+
+                runOnUiThread(() -> {
+                    if (tpuSchools != null && !tpuSchools.isEmpty()) {
+                        updateSchoolsSpinner(tpuSchools);
+                    } else {
+                        Toast.makeText(ScheduleActivity.this,
+                                "Не удалось загрузить список школ",
+                                Toast.LENGTH_SHORT).show();
+                        updateSchoolsSpinner(new ArrayList<TPUScheduleParser.School>());
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error loading TPU data", e);
+                runOnUiThread(() -> {
+                    Toast.makeText(ScheduleActivity.this,
+                            "Ошибка загрузки данных: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                    updateSchoolsSpinner(new ArrayList<TPUScheduleParser.School>());
+                });
+            }
+        }).start();
     }
 
     private void unsyncCalendar() {
@@ -397,6 +1150,7 @@ public class ScheduleActivity extends AppCompatActivity {
         }
         return false;
     }
+
     @SuppressLint("ScheduleExactAlarm")
     private void updateAlarms() {
         Log.d(TAG, "Updating alarms...");
@@ -701,6 +1455,14 @@ public class ScheduleActivity extends AppCompatActivity {
             }
         });
 
+    }
+
+    private void clearData() {
+        jsonDataOfSite = null;
+        currentSearchQuery = "";
+        groupedLessonsMap.clear();
+        clearScheduleContainers();
+        updateGroupsTextView("");
     }
 
     private void checkPermission(int callbackId, String... permissionsId) {
@@ -1048,7 +1810,7 @@ public class ScheduleActivity extends AppCompatActivity {
         List<WeekWheelAdapter.WeekItem> weeks = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
 
-        for (int i = -27; i <= 27; i++) { // 2 года назад и вперёд
+        for (int i = -52; i <= 52; i++) { // 2 года назад и вперёд
             Calendar tempCal = (Calendar) cal.clone();
             tempCal.add(Calendar.WEEK_OF_YEAR, i);
 
@@ -1100,7 +1862,13 @@ public class ScheduleActivity extends AppCompatActivity {
     private void restoreLastSearch() {
         String lastSearch = sharedPreferences.getString(KEY_LAST_SEARCH, "");
         if (!lastSearch.isEmpty()) {
-            applySearch(lastSearch);
+            String normalized = lastSearch.toLowerCase().trim();
+            if (allGroups.contains(normalized) || allTeachers.contains(normalized)) {
+                applySearch(lastSearch);
+            } else {
+                // Очищаем невалидное значение
+                sharedPreferences.edit().remove(KEY_LAST_SEARCH).apply();
+            }
         }
     }
 
@@ -1115,6 +1883,7 @@ public class ScheduleActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
+        outState.putBoolean("isLoading", isLoading);
         outState.putString("CURRENT_SEARCH", currentSearchQuery);
         outState.putInt("SELECTED_WEEK", selectedWeek);
         outState.putInt("SELECTED_YEAR", selectedYear);
@@ -1139,6 +1908,7 @@ public class ScheduleActivity extends AppCompatActivity {
     @Override
     protected void onRestoreInstanceState(@NonNull Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
+        isLoading = savedInstanceState.getBoolean("isLoading");
         currentSearchQuery = savedInstanceState.getString("CURRENT_SEARCH", "");
         jsonDataOfSite = savedInstanceState.getString("JSON_DATA");
         selectedWeek = savedInstanceState.getInt("SELECTED_WEEK");
@@ -1298,19 +2068,61 @@ public class ScheduleActivity extends AppCompatActivity {
         }
         currentSearchQuery = query.trim();
         saveSearchState(query);
-        saveSearchState(query);
         updateGroupsTextView(query);
-        SharedPreferences.Editor editor = getSharedPreferences("schedule_prefs", MODE_PRIVATE).edit();
-        editor.putString("saved_group", query);
-        editor.apply();
+        Log.d(TAG, "Applying search: " + query);
+        Log.d(TAG, "Available groups: " + allGroups.toString());
+        Log.d(TAG, "Available teachers: " + allTeachers.toString());
         runOnUiThread(() -> {
             clearScheduleContainers();
             paraContainers.clear();
         });
 
+        // Проверка существования группы/преподавателя
+        boolean isValid = allGroups.contains(query.toLowerCase()) ||
+                allTeachers.contains(query.toLowerCase());
+
+        if (!isValid) {
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Группа/преподаватель не найдена", Toast.LENGTH_SHORT).show();
+                groupsTextView.setVisibility(View.GONE);
+            });
+            return;
+        }
+
         if (jsonDataOfSite != null && !jsonDataOfSite.isEmpty()) {
             parseSchedule(jsonDataOfSite);
         }
+        updateGroupHash();
+    }
+
+    private void updateGroupHash() {
+        if (currentSearchQuery.isEmpty() || jsonDataOfSite == null) {
+            Log.d(TAG, "updateGroupHash: currentSearchQuery or jsonDataOfSite is null");
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                Log.d(TAG, "Updating group hash for: " + currentSearchQuery);
+                List<LessonData> lessons = filterLessonsForGroup(jsonDataOfSite, currentSearchQuery);
+                Log.d(TAG, "Found lessons: " + lessons.size());
+
+                if (lessons.isEmpty()) {
+                    Log.w(TAG, "No lessons found for group: " + currentSearchQuery);
+                    return;
+                }
+
+                String newHash = calculateHash(lessons.toString());
+                Log.d(TAG, "New group hash: " + newHash);
+
+                SharedPreferences prefs = getSharedPreferences(HASH_PREFS, MODE_PRIVATE);
+                prefs.edit()
+                        .putString(GROUP_HASH_PREFIX + currentSearchQuery, newHash)
+                        .apply();
+            } catch (Exception e) {
+                Log.e(TAG, "Group hash update error", e);
+            }
+        });
     }
 
     private void updateGroupsTextView(String query) {
@@ -1351,8 +2163,8 @@ public class ScheduleActivity extends AppCompatActivity {
     }
 
     private void collectSearchData(JSONArray faculties) throws JSONException {
-        Set<String> uniqueGroups = new HashSet<>();
-        Set<String> uniqueTeachers = new HashSet<>();
+        allGroups.clear();
+        allTeachers.clear();
 
         for (int i = 0; i < faculties.length(); i++) {
             JSONObject faculty = faculties.getJSONObject(i);
@@ -1361,7 +2173,7 @@ public class ScheduleActivity extends AppCompatActivity {
             for (int j = 0; j < groups.length(); j++) {
                 JSONObject group = groups.getJSONObject(j);
                 String groupName = group.getString("name").trim().toLowerCase();
-                uniqueGroups.add(groupName);
+                allGroups.add(groupName); // Добавляем в нижнем регистре
 
                 JSONArray lessons = group.getJSONArray("lessons");
                 for (int k = 0; k < lessons.length(); k++) {
@@ -1373,21 +2185,13 @@ public class ScheduleActivity extends AppCompatActivity {
                             String teacher = teachers.getJSONObject(t)
                                     .getString("name")
                                     .trim()
-                                    .toLowerCase();
-                            uniqueTeachers.add(teacher);
+                                    .toLowerCase(); // В нижнем регистре
+                            allTeachers.add(teacher);
                         }
                     }
                 }
             }
         }
-
-        allGroups.clear();
-        allGroups.addAll(uniqueGroups);
-        Collections.sort(allGroups);
-
-        allTeachers.clear();
-        allTeachers.addAll(uniqueTeachers);
-        Collections.sort(allTeachers);
     }
 
     private void updateSearchAdapter() {
@@ -1458,6 +2262,9 @@ public class ScheduleActivity extends AppCompatActivity {
         executor = Executors.newSingleThreadExecutor();
     }
 
+
+
+
     private void loadInitialWeek() {
         Calendar calendar = Calendar.getInstance();
         calendar.setFirstDayOfWeek(Calendar.MONDAY);
@@ -1472,9 +2279,21 @@ public class ScheduleActivity extends AppCompatActivity {
         updateDayDates();
     }
 
-    private void loadSchedule() {
+    private void loadScheduleFromUTI() {
         if (jsonDataOfSite != null || isFinishing()) return;
+        if (isFinishing()) return;
+        if (jsonDataOfSite == null) {
+            String cached = loadLocalSchedule();
+            if (cached != null) {
+                runOnUiThread(() -> {
+                    jsonDataOfSite = cached;
+                    processDataInBackground(cached);
+                });
+                return;
+            }
+        }
 
+        // Если дошли сюда, значит нужно грузить с сервера
         showLoading(true);
         EditText searchField = findViewById(R.id.searchField);
         searchField.setOnEditorActionListener((v, actionId, event) -> {
@@ -1484,6 +2303,7 @@ public class ScheduleActivity extends AppCompatActivity {
             }
             return false;
         });
+
         executor.execute(() -> {
             int retryCount = 0;
             final int MAX_RETRIES = 3;
@@ -1543,6 +2363,70 @@ public class ScheduleActivity extends AppCompatActivity {
             }
         });
     }
+
+    private void loadSchedule() {
+        if (SOURCE_TPU.equals(currentSource)) {
+            loadScheduleFromTPU();
+        } else {
+            loadScheduleFromUTI();
+        }
+    }
+
+
+    private void loadScheduleFromTPU() {
+        if (isFinishing()) return;
+        showLoading(true);
+
+        // Проверяем валидность cookies
+        if (!tpuParser.checkCookiesValidity()) {
+            // Запускаем активность для решения капчи
+            Intent intent = new Intent(this, CaptchaActivity.class);
+            startActivityForResult(intent, REQUEST_CAPTCHA);
+            return;
+        }
+
+        // Инициализируем tpuGroups, если он null
+        if (tpuGroups == null) {
+            tpuGroups = new ArrayList<>();
+        }
+
+        // Если у нас уже есть выбранная группа, загружаем её расписание
+        if (currentSearchQuery != null && !currentSearchQuery.isEmpty() && !currentSearchQuery.equals("Не выбрано")) {
+            // Находим ID группы по имени
+            for (TPUScheduleParser.Group group : tpuGroups) {
+                if (group.name.equals(currentSearchQuery)) {
+                    loadScheduleForGroup(group.id);
+                    return;
+                }
+            }
+        }
+
+        // Если группа не выбрана, показываем выбор школы и группы
+        loadTPUData();
+    }
+
+    // ScheduleActivity.java
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_CAPTCHA) {
+            if (resultCode == RESULT_OK) {
+                // Перезагружаем cookies
+                tpuParser.loadCookiesFromPrefs();
+                // Продолжаем загрузку расписания
+                loadTPUData();
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
 
     private void processDataInBackground(String jsonData) {
         executor.execute(() -> {
@@ -1630,6 +2514,7 @@ public class ScheduleActivity extends AppCompatActivity {
                     redrawScheduleUI();
                     Log.d(TAG, "Schedule parsed - updating alarms");
                     updateAlarms();
+                    saveDataForWidget();
                 });
 
             } catch (JSONException e) {
@@ -1639,33 +2524,94 @@ public class ScheduleActivity extends AppCompatActivity {
         });
     }
 
+    private void saveDataForWidget() {
+        try {
+            JSONObject widgetData = new JSONObject();
+            Calendar calendar = Calendar.getInstance();
+// Проверка текущей недели
+            if (!isCurrentWeek()) {
+                Log.d("WidgetData", "Not current week - skipping widget update");
+                return;
+            }
+            // Устанавливаем начало недели на ПОНЕДЕЛЬНИК (важно для корректного расчета)
+            calendar.setFirstDayOfWeek(Calendar.MONDAY);
+            calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
+
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM", Locale.getDefault());
+            Calendar now = Calendar.getInstance();
+            int currentWeek = now.get(Calendar.WEEK_OF_YEAR);
+            int currentYear = now.get(Calendar.YEAR);
+
+            // Обрабатываем 7 дней недели (0=ПН, 6=ВС)
+            for (int i = 0; i < 7; i++) {
+                JSONArray lessonsArray = new JSONArray();
+                int targetWeekday = i; // 0-пн, 1-вт, ... 6-вс
+
+                // Собираем уроки для текущего дня недели
+                for (List<LessonData> lessonList : groupedLessonsMap.values()) {
+                    for (LessonData lesson : lessonList) {
+                        // КОРРЕКТИРОВКА: преобразуем weekday урока (1-пн..7-вс → 0-пн..6-вс)
+                        int lessonWeekday = lesson.weekday - 1;
+
+                        if (lessonWeekday == targetWeekday && matchesCurrentSearch(lesson)) {
+                            JSONObject lessonObj = new JSONObject();
+                            lessonObj.put("para", lesson.paraNumber + " пара");
+                            lessonObj.put("time", lesson.time);
+                            lessonObj.put("subject", lesson.subject);
+                            lessonObj.put("audience", lesson.audience);
+                            lessonObj.put("type", lesson.type);
+                            lessonObj.put("teacher", lesson.teacher);
+                            lessonObj.put("subgroups", lesson.subgroups); // Добавляем подгруппу
+
+                            lessonsArray.put(lessonObj);
+                        }
+                    }
+                }
+
+                if (lessonsArray.length() > 0) {
+                    JSONObject dayData = new JSONObject();
+                    dayData.put("date", dateFormat.format(calendar.getTime())); // Дата текущего дня в цикле
+                    dayData.put("lessons", lessonsArray);
+                    widgetData.put(String.valueOf(i), dayData); // Ключ: 0-6
+                }
+
+                // Переход к следующему дню
+                calendar.add(Calendar.DAY_OF_MONTH, 1);
+            }
+
+            // Сохраняем все необходимые данные
+            SharedPreferences prefs = getSharedPreferences("WidgetPrefs", MODE_PRIVATE);
+            prefs.edit()
+                    .putString("widget_data", widgetData.toString())
+                    .putString("current_group", currentSearchQuery)
+                    .putInt("saved_week", currentWeek)
+                    .putInt("saved_year", currentYear)
+                    .apply();
+
+            // Обновляем виджет (с явным указанием компонента)
+            Intent updateIntent = new Intent("UPDATE_WIDGET");
+            updateIntent.setComponent(new ComponentName(this, ScheduleWidgetProvider.class));
+            sendBroadcast(updateIntent);
+            Log.d("WidgetData", "Widget data saved: " + widgetData.toString());
+        } catch (JSONException e) {
+            Log.e("WidgetError", "Error saving widget data", e);
+        }
+    }
+
     private void redrawScheduleUI() {
         runOnUiThread(() -> {
             clearScheduleContainers();
 
+            // Сортируем уроки по времени
             List<String> sortedKeys = new ArrayList<>(groupedLessonsMap.keySet());
-            Collections.sort(sortedKeys, (k1, k2) -> {
-                String[] p1 = k1.split("\\|");
-                String[] p2 = k2.split("\\|");
-
-                int dayCompare = Integer.compare(Integer.parseInt(p1[0]), Integer.parseInt(p2[0]));
-                if (dayCompare != 0) return dayCompare;
-
-                try {
-                    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm");
-                    Date t1 = sdf.parse(p1[1].split(" - ")[0]);
-                    Date t2 = sdf.parse(p2[1].split(" - ")[0]);
-                    return t1.compareTo(t2);
-                } catch (ParseException e) {
-                    return 0;
-                }
-            });
+            Collections.sort(sortedKeys);
 
             for (String key : sortedKeys) {
                 addGroupedLessonsToUI(groupedLessonsMap.get(key));
             }
 
             updateDayVisibility();
+            saveDataForWidget(); // Сохраняем данные для виджета
         });
     }
 
@@ -1709,30 +2655,34 @@ public class ScheduleActivity extends AppCompatActivity {
     private List<LessonData> getFilteredLessons() {
         List<LessonData> filtered = new ArrayList<>();
         Log.d(TAG, "Filtering lessons for: " + currentSearchQuery);
+        Log.d(TAG, "Total lessons in map: " + groupedLessonsMap.values().stream().mapToInt(List::size).sum());
 
         for (List<LessonData> lessons : groupedLessonsMap.values()) {
             for (LessonData lesson : lessons) {
-
                 if (matchesCurrentSearch(lesson)) {
                     filtered.add(lesson);
-                    Log.d(TAG, "Lesson ADDED: " + lesson.subject);
+                    Log.d(TAG, "Lesson ADDED: " + lesson.subject + " for group: " + lesson.group);
                 }
             }
         }
+
         Log.d(TAG, "Total filtered lessons: " + filtered.size());
         return filtered;
     }
 
     private boolean matchesCurrentSearch(LessonData lesson) {
-        if (currentSearchQuery.isEmpty()) return false; // Без запроса ничего не показываем
+        if (currentSearchQuery.isEmpty()) return false;
 
-        // Точное совпадение для группы (без учета регистра)
+        String normalizedQuery = currentSearchQuery.toLowerCase().trim();
+
         boolean groupMatch = lesson.group != null &&
-                lesson.group.equalsIgnoreCase(currentSearchQuery);
+                lesson.group.toLowerCase().trim().equals(normalizedQuery);
 
-        // Точное совпадение для преподавателя (без учета регистра)
         boolean teacherMatch = lesson.teacher != null &&
-                lesson.teacher.equalsIgnoreCase(currentSearchQuery);
+                lesson.teacher.toLowerCase().trim().equals(normalizedQuery);
+
+        Log.d(TAG, "Matching: " + normalizedQuery + " with group: " + lesson.group +
+                ", teacher: " + lesson.teacher + ", result: " + (groupMatch || teacherMatch));
 
         return groupMatch || teacherMatch;
     }
@@ -1846,9 +2796,7 @@ public class ScheduleActivity extends AppCompatActivity {
             int lessonYear = calLocal.get(Calendar.YEAR);
 
             // Проверка недели и года
-            if (lessonWeek != selectedWeek || lessonYear != selectedYear) {
-                return null;
-            }
+            //if (lessonWeek != selectedWeek || lessonYear != selectedYear) {return null;}
 
             JSONObject time = lesson.getJSONObject("time");
             String startTime = time.getString("start");
@@ -2101,8 +3049,8 @@ public class ScheduleActivity extends AppCompatActivity {
         selected.set(Calendar.WEEK_OF_YEAR, selectedWeek);
         selected.set(Calendar.YEAR, selectedYear);
 
-        return now.get(Calendar.WEEK_OF_YEAR) == selected.get(Calendar.WEEK_OF_YEAR)
-                && now.get(Calendar.YEAR) == selected.get(Calendar.YEAR);
+        return now.get(Calendar.WEEK_OF_YEAR) == selectedWeek &&
+                now.get(Calendar.YEAR) == selectedYear;
     }
 
     private void updateDates() {
@@ -2122,7 +3070,9 @@ public class ScheduleActivity extends AppCompatActivity {
             if (hour == 12) return 3;
             if (hour == 14) return 4;
             if (hour == 16) return 5;
-            return 6; // Для вечерних пар
+            if (hour == 18) return 6;
+            if (hour == 20) return 7;
+            return 8; // Для вечерних пар
         } catch (Exception e) {
             return 0;
         }
@@ -2155,9 +3105,15 @@ public class ScheduleActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        stopScheduleChecker();
         if (executor != null) {
             executor.shutdownNow();
         }
+        if (tpuParser != null) {
+            tpuParser.cleanupTempFiles();
+        }
+        // Отменяем все pending операции
+        checkHandler.removeCallbacksAndMessages(null);
         // Сохраняем данные при выходе
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString(KEY_LAST_SEARCH, currentSearchQuery);

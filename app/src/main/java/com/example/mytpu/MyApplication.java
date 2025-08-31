@@ -3,6 +3,8 @@ package com.example.mytpu;
 import android.app.Application;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.util.Log;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
@@ -26,12 +28,21 @@ public class MyApplication extends Application {
     private static final String COOKIE_PREFS = "secure_cookies";
     private SharedPreferences encryptedPrefs;
     private String authToken;
-    static PersistentCookieJar cookieJar = null;
+    private static PackageInfo pInfo; // Remove static initializer
+
     @Override
     public void onCreate() {
         super.onCreate();
+        try {
+            pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e(TAG, "Package info not found", e);
+        }
         setupSecurePreferences();
         setupHttpClient();
+    }
+    public static String getAppVersion() {
+        return pInfo != null ? pInfo.versionName : "1.0";
     }
     public void setAuthToken(String token) {
         this.authToken = token;

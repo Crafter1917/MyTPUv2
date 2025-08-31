@@ -13,6 +13,7 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
@@ -23,11 +24,21 @@
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
 
+        <TextView
+            android:id="@+id/watermark"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|right"
+            android:gravity="bottom|right"
+            android:padding="8dp"
+            android:text="Бета версия "
+            android:textSize="20sp" />
 
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
+
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
@@ -100,7 +111,10 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Добавляем в конец DrawerLayout -->
+
         </FrameLayout>
+
     </LinearLayout>
 
     <!-- Обертка для NavigationView -->
@@ -120,5 +134,6 @@
             app:menu="@menu/nav_dashboard"/>
 
     </LinearLayout>
+
 
 </androidx.drawerlayout.widget.DrawerLayout>

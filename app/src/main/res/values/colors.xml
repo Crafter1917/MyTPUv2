@@ -27,4 +27,10 @@
     <color name="colorStatusInProgress">#2196F3</color>
     <color name="colorStatusCompleted">#4CAF50</color>
     <color name="colorStatusLate">#F44336</color>
+    <color name="colorPrimaryDark">#FF3700B3</color>
+    <color name="widget_background">#FFFFFF</color>
+    <color name="widget_text_primary">#212121</color>
+    <color name="widget_text_secondary">#757575</color>
+    <color name="widget_today_background">#F3F3F3</color>
+    <color name="widget_today_border">#FF6200EE</color>
 </resources>

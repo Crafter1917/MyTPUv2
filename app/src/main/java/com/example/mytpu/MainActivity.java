@@ -2,6 +2,7 @@ package com.example.mytpu;
 
 import static android.content.ContentValues.TAG;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -39,6 +40,7 @@ public class MainActivity extends AppCompatActivity
     private PortalAuthHelper portalAuthHelper;
 
 
+    @SuppressLint("SetTextI18n")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -52,6 +54,8 @@ public class MainActivity extends AppCompatActivity
         setupToolbar();
         setupNavigation();
         checkAuthState();
+        TextView watermark = findViewById(R.id.watermark);
+        watermark.setText(String.format("Бета версия %s", MyApplication.getAppVersion()));
     }
 
 

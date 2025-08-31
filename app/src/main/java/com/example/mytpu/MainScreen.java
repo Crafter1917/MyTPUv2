@@ -120,6 +120,10 @@ public class MainScreen extends Fragment {
                 showToast("Введите логин и пароль");
             }
         });
+
+        TextView versionText = view.findViewById(R.id.versionText);
+        versionText.setText(String.format("Бета версия %s", MyApplication.getAppVersion()));
+
         return view;
     }
 

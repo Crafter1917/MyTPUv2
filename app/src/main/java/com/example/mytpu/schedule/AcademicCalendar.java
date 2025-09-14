@@ -25,17 +25,12 @@ public class AcademicCalendar {
             default: return Calendar.MONDAY;
         }
     }
-
     public static int getAcademicYear(Date date) {
         Calendar cal = Calendar.getInstance();
         cal.setTime(date);
+        int month = cal.get(Calendar.MONTH);
         int year = cal.get(Calendar.YEAR);
-
-        // Учебный год начинается с сентября
-        if (cal.get(Calendar.MONTH) < Calendar.AUGUST) {
-            return year -1;
-        } else {
-            return year;
-        }
+        return (month >= Calendar.SEPTEMBER) ? year : year ;
     }
+
 }

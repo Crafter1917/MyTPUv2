@@ -39,10 +39,6 @@ public class ScheduleDataLoader {
     }
 
     public void loadTodaySchedule(String group, ScheduleDataListener listener, int timeoutSeconds) {
-        OkHttpClient clientWithTimeout = client.newBuilder()
-                .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .build();
         executor.execute(() -> {
             try {
                 Log.d(TAG, "loadTodaySchedule is started!");

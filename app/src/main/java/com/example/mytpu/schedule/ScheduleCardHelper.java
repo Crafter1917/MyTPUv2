@@ -26,7 +26,6 @@ public class ScheduleCardHelper {
         TextView tvTeacher = cardView.findViewById(R.id.tvTeacher);
         TextView tvAudience = cardView.findViewById(R.id.tvAudience);
         TextView tvType = cardView.findViewById(R.id.tvType);
-        CardView card = cardView.findViewById(R.id.cardView);
 
         // Устанавливаем данные
         tvSubject.setText(subject);

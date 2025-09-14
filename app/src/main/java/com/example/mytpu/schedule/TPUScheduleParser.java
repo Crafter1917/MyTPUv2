@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 import android.webkit.CookieManager;
@@ -24,7 +25,10 @@ import org.jsoup.select.Elements;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,10 +44,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/**
- * Парсер расписания ТПУ
- * Заменяет Python-реализацию из schedule_groups.py и ID_name_TPU.py
- */
 public class TPUScheduleParser {
     private static final String TAG = "TPUScheduleParser";
     private static final String BASE_URL = "https://rasp.tpu.ru/";
@@ -105,24 +105,54 @@ public class TPUScheduleParser {
             // Проверяем наличие зашифрованных данных
             if (responseBody.contains("encrypt")) {
                 Log.d(TAG, "Encrypted data detected, attempting decryption");
-                try {
-                    String decryptedHtml = decryptWithWebView(groupId, year, weekNumber);
-                    if (decryptedHtml == null || decryptedHtml.isEmpty()) {
-                        throw new IOException("Decryption returned empty result");
+                int maxAttempts = 3;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        Log.d(TAG, "Decryption attempt " + attempt + " of " + maxAttempts);
+                        String decryptedHtml = decryptWithWebView(groupId, year, weekNumber);
+                        if (decryptedHtml == null || decryptedHtml.isEmpty()) {
+                            throw new IOException("Decryption returned empty result");
+                        }
+                        Log.d(TAG, "Decrypted HTML length: " + decryptedHtml.length());
+
+                        // Сохраняем расшифрованный HTML для анализа
+                        saveHtmlToFile(decryptedHtml, "decrypted_" + groupId + "_" + year + "_" + weekNumber + ".html");
+
+                        Document doc = Jsoup.parse(decryptedHtml);
+                        Schedule schedule = parseSchedule(doc, groupId, year, weekNumber);
+
+                        // Очищаем временные файлы после успешного парсинга
+                        cleanupTempFiles();
+
+                        return schedule;
+                    } catch (Exception e) {
+                        if (attempt == maxAttempts) {
+                            Log.e(TAG, "Decryption failed after " + maxAttempts + " attempts: " + e.getMessage());
+                            throw new IOException("Ошибка дешифрования после " + maxAttempts + " попыток: " + e.getMessage());
+                        } else {
+                            Log.w(TAG, "Decryption attempt " + attempt + " failed, retrying...", e);
+                            try {
+                                // Задержка между попытками
+                                Thread.sleep(200);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw new IOException("Interrupted during decryption retry", ie);
+                            }
+                        }
                     }
-                    Log.d(TAG, "Decrypted HTML length: " + decryptedHtml.length());
-                    Document doc = Jsoup.parse(decryptedHtml);
-                    return parseSchedule(doc, groupId, year, weekNumber);
-                } catch (Exception e) {
-                    Log.e(TAG, "Decryption failed: " + e.getMessage());
-                    throw new IOException("Ошибка дешифрования: " + e.getMessage());
                 }
             } else {
                 Log.d(TAG, "No encrypted data found, parsing directly");
                 Document doc = Jsoup.parse(responseBody);
-                return parseSchedule(doc, groupId, year, weekNumber);
+                Schedule schedule = parseSchedule(doc, groupId, year, weekNumber);
+
+                // Очищаем временные файлы после успешного парсинга
+                cleanupTempFiles();
+
+                return schedule;
             }
         }
+        return null;
     }
     private String decryptWithWebView(String groupId, int year, int weekNumber) {
         Log.d(TAG, "Starting WebView decryption for group: " + groupId + ", year: " + year + ", week: " + weekNumber);
@@ -170,7 +200,11 @@ public class TPUScheduleParser {
                                             throw new IOException("WebView returned null HTML");
                                         }
 
-                                        String cleanedHtml = html.replaceAll("^\"|\"$", "");
+                                        String cleanedHtml = html.replaceAll("^\"|\"$", "")
+                                                .replace("\\u003C", "<")
+                                                .replace("\\u003E", ">")
+                                                .replace("\\\"", "\"")
+                                                .replace("\\\\", "\\");
 
                                         if (cleanedHtml.isEmpty()) {
                                             throw new IOException("WebView returned empty HTML");
@@ -381,9 +415,22 @@ public class TPUScheduleParser {
                 throw new IOException("Unexpected code " + response);
             }
 
-            Document doc = Jsoup.parse(response.body().string());
-            Elements schoolLinks = doc.select("a[href*=/site/department.html?id=]");
+            String responseBody = response.body().string();
+            Document doc = Jsoup.parse(responseBody);
 
+            // Улучшенная проверка капчи
+            boolean hasCaptcha = doc.select("input[name=captcha], #captcha, .captcha").size() > 0 ||
+                    doc.text().toLowerCase().contains("капча") ||
+                    doc.text().toLowerCase().contains("captcha") ||
+                    doc.select("form").stream().anyMatch(form ->
+                            form.attr("action").toLowerCase().contains("captcha"));
+
+            if (hasCaptcha) {
+                saveHtmlToFile(responseBody, "captcha_detected.html");
+                throw new IOException("Требуется решение капчи");
+            }
+
+            Elements schoolLinks = doc.select("a[href*=/site/department.html?id=]");
             for (Element link : schoolLinks) {
                 School school = new School();
                 String href = link.attr("href");
@@ -394,6 +441,28 @@ public class TPUScheduleParser {
         }
 
         return schools;
+    }
+    public void syncCookiesFromWebView() {
+        try {
+            CookieManager cookieManager = CookieManager.getInstance();
+            String cookies = cookieManager.getCookie(BASE_URL);
+
+            if (cookies != null && !cookies.isEmpty()) {
+                // Нормализуем куки
+                String normalizedCookies = cookies.replaceAll("\\s+", "")
+                        .replaceAll(";+", ";")
+                        .replaceAll("=+", "=");
+
+                SharedPreferences prefs = context.getSharedPreferences(COOKIE_PREFS, MODE_PRIVATE);
+                prefs.edit().putString("cookies", normalizedCookies).apply();
+
+                // Также обновляем куки в текущем клиенте
+                forceSetCookies(normalizedCookies);
+                Log.d(TAG, "Cookies fully synced from WebView: " + normalizedCookies);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error syncing cookies from WebView", e);
+        }
     }
     public List<Group> getGroups(String schoolId) throws IOException {
         Log.d(TAG, "Fetching groups for school ID: " + schoolId);
@@ -437,6 +506,12 @@ public class TPUScheduleParser {
         schedule.groupId = groupId;
         schedule.year = year;
         schedule.weekNumber = weekNumber;
+        parseDatesFromTableHeaders(doc, schedule);
+        Element table = doc.select("#raspisanie-table table").first();
+        if (table != null) {
+            parseTableSchedule(table, schedule);
+            return schedule;
+        }
 
         Log.d(TAG, "Starting to parse schedule document");
 
@@ -479,7 +554,33 @@ public class TPUScheduleParser {
 
         return schedule;
     }
+    private void parseDatesFromTableHeaders(Document doc, Schedule schedule) {
+        try {
+            Elements dateHeaders = doc.select("thead tr th.text-center.hidden-xs");
 
+            for (int i = 0; i < dateHeaders.size() && i < 7; i++) {
+                Element header = dateHeaders.get(i);
+                String text = cleanText(header.text());
+
+                // Извлекаем дату из текста (первая часть до перевода строки)
+                String datePart = text.split("\\s+")[0]; // Берем первую часть (дату)
+
+                // Преобразуем формат даты из "dd.MM.yy" в "dd.MM.yyyy"
+                SimpleDateFormat inputFormat = new SimpleDateFormat("dd.MM.yy");
+                SimpleDateFormat outputFormat = new SimpleDateFormat("dd.MM.yyyy");
+
+                try {
+                    Date date = inputFormat.parse(datePart);
+                    String formattedDate = outputFormat.format(date);
+                    schedule.dates[i] = formattedDate;
+                } catch (ParseException e) {
+                    schedule.dates[i] = cleanText(datePart); // Оставляем как есть, если не удалось распарсить
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error parsing dates from table headers", e);
+        }
+    }
     private boolean isScheduleElement(Element element, String text, String html) {
         // Признаки элемента с расписанием
         if (text.contains("08:30") || text.contains("10:25") || text.contains("12:40") ||
@@ -499,22 +600,12 @@ public class TPUScheduleParser {
 
         return false;
     }
-
     private boolean extractScheduleFromElement(Element element, Schedule schedule) {
         try {
-            // Пытаемся найти структуру таблицы
             Elements tables = element.select("table");
             if (!tables.isEmpty()) {
                 return parseTableSchedule(tables.first(), schedule);
             }
-
-            // Пытаемся найти структуру div'ов, имитирующую таблицу
-            Elements rows = element.select("div, tr, li");
-            if (rows.size() > 5) { // Предполагаем, что это может быть расписание
-                return parseDivSchedule(rows, schedule);
-            }
-
-            // Пытаемся найти данные в JSON или другой структуре
             return parseDataAttributes(element, schedule);
 
         } catch (Exception e) {
@@ -522,23 +613,32 @@ public class TPUScheduleParser {
             return false;
         }
     }
-
     private boolean parseTableSchedule(Element table, Schedule schedule) {
-        Log.d(TAG, "Parsing table schedule");
         Elements rows = table.select("tr");
 
         for (int i = 0; i < rows.size(); i++) {
             Element row = rows.get(i);
             Elements cells = row.select("td, th");
 
-            // Проверяем, содержит ли строка время
-            if (cells.size() > 0 && cells.get(0).text().matches(".*\\d{1,2}:\\d{2}.*")) {
-                String time = cells.get(0).text().trim().replace("\n", " - ");
+            if (cells.size() > 0) {
+                // Извлекаем время из атрибута title
+                String time = cells.get(0).attr("title");
+                if (time.isEmpty()) {
+                    time = cells.get(0).text();
+                }
+                time = cleanText(time.replace("\n", " - "));
+
+                // Пропускаем строки с заголовками
+                if (time.equals("Время")) {
+                    continue;
+                }
 
                 // Обрабатываем ячейки с занятиями
                 for (int j = 1; j < cells.size() && j <= 7; j++) {
                     Element cell = cells.get(j);
-                    if (!cell.text().trim().isEmpty()) {
+                    String cellText = cleanText(cell.text());
+
+                    if (!cellText.isEmpty() && !cellText.equals("-")) {
                         Lesson lesson = parseLesson(cell, time);
                         if (lesson != null) {
                             schedule.addLesson(j - 1, lesson);
@@ -550,17 +650,6 @@ public class TPUScheduleParser {
 
         return !schedule.days.stream().allMatch(List::isEmpty);
     }
-
-    private boolean parseDivSchedule(Elements rows, Schedule schedule) {
-        Log.d(TAG, "Parsing div-based schedule");
-        // Реализация парсинга нетрадиционной структуры расписания
-        // На основе анализа конкретной структуры HTML после дешифровки
-
-        // Эта реализация будет зависеть от фактической структуры HTML
-        // которую мы увидим в сохраненных файлах detailed_analysis_*
-        return false;
-    }
-
     private boolean parseDataAttributes(Element element, Schedule schedule) {
         Log.d(TAG, "Parsing data attributes");
         // Пытаемся найти данные в атрибутах data-*
@@ -587,7 +676,6 @@ public class TPUScheduleParser {
 
         return !schedule.days.stream().allMatch(List::isEmpty);
     }
-
     private void extractScheduleFromTimePatterns(Document doc, Schedule schedule) {
         Log.d(TAG, "Extracting schedule from time patterns");
 
@@ -606,7 +694,6 @@ public class TPUScheduleParser {
             }
         }
     }
-
     private void findRelatedLessonInfo(Element timeElement, String time, Schedule schedule) {
         // Ищем соседние элементы, которые могут содержать информацию о занятии
         Element parent = timeElement.parent();
@@ -630,7 +717,6 @@ public class TPUScheduleParser {
             }
         }
     }
-
     private void analyzeDocumentStructure(Document doc) {
         Log.d(TAG, "Analyzing document structure");
 
@@ -664,7 +750,6 @@ public class TPUScheduleParser {
         Log.d(TAG, "Tag statistics: " + tagCount);
         Log.d(TAG, "Class statistics: " + classCount);
     }
-
     private void analyzeParsingFailure(Document doc, String groupId, int year, int weekNumber) {
         Log.e(TAG, "Complete parsing failure analysis");
 
@@ -690,143 +775,47 @@ public class TPUScheduleParser {
                     " text: " + element.text());
         }
     }
+    // Добавляем метод для очистки текста
+    private String cleanText(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return "";
+        }
+        return text.replaceAll("[\\\\n\\\\t]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
 
-    // Улучшенный метод parseLesson
+    // Обновляем метод parseLesson
     private Lesson parseLesson(Element cell, String time) {
         Lesson lesson = new Lesson();
-        lesson.time = time;
+        lesson.time = cleanText(time);
 
-        // Получаем чистый HTML ячейки для анализа
-        String cellHtml = cell.html();
-        Log.d(TAG, "Parsing lesson cell, HTML: " + cellHtml.substring(0, Math.min(100, cellHtml.length())));
+        // Извлекаем данные из структуры ячейки
+        Elements divs = cell.select("div");
+        if (divs.size() >= 3) {
+            // Первый div: предмет и тип
+            String firstDivText = divs.get(0).text();
+            lesson.subject = cleanText(firstDivText.replaceAll("\\(.*\\)", ""));
 
-        // 1. Приоритет: уже расшифрованный текст в элементах с data-encrypt
-        Elements encryptElements = cell.select("[data-encrypt]");
-        if (!encryptElements.isEmpty()) {
-            for (Element encryptElement : encryptElements) {
-                String text = encryptElement.text().trim();
-                if (!text.isEmpty()) {
-                    lesson.subject = text;
-                    Log.d(TAG, "Using decrypted text from data-encrypt: " + lesson.subject);
-                    break;
-                }
-            }
+            // Второй div: преподаватель
+            lesson.teacher = cleanText(divs.get(1).text());
+
+            // Третий div: аудитория
+            lesson.location = cleanText(divs.get(2).text());
+        } else {
+            // Альтернативный парсинг для других форматов
+            lesson.subject = cleanText(cell.select(".subject").text());
+            lesson.teacher = cleanText(cell.select(".teacher").text());
+            lesson.location = cleanText(cell.select(".location").text());
         }
 
-        // 2. Поиск текста предмета в различных элементах
-        if (lesson.subject == null) {
-            String[] subjectSelectors = {
-                    "a", "span", "div", "b", ".encrypt", "[title]"
-            };
-
-            for (String selector : subjectSelectors) {
-                Elements elements = cell.select(selector);
-                for (Element element : elements) {
-                    String text = element.text().trim();
-                    if (!text.isEmpty() && text.length() < 100) { // Фильтруем слишком длинные тексты
-                        lesson.subject = text;
-                        Log.d(TAG, "Subject found with selector '" + selector + "': " + lesson.subject);
-
-                        // Извлекаем URL если есть
-                        if (element.tagName().equals("a") && element.hasAttr("href")) {
-                            lesson.subjectUrl = completeUrl(element.attr("href"));
-                        }
-                        break;
-                    }
-                }
-                if (lesson.subject != null) break;
-            }
-        }
-
-        // 3. Если не нашли другим способом, используем весь текст ячейки
-        if (lesson.subject == null) {
-            String fullText = cell.text().trim();
-            if (!fullText.isEmpty()) {
-                lesson.subject = fullText;
-                Log.d(TAG, "Using full cell text as subject: " + lesson.subject);
-            }
-        }
-
-        // 4. Поиск типа занятия (ЛК, ЛБ, ПР и т.д.)
-        if (lesson.subject != null) {
-            // Ищем тип занятия в тексте предмета
-            Pattern typePattern = Pattern.compile("\\((ЛК|ЛБ|ПР|СЕМ|ЗЧ|ЭК|КР|КП)\\)");
-            Matcher matcher = typePattern.matcher(lesson.subject);
-            if (matcher.find()) {
-                lesson.type = matcher.group(1);
-                lesson.subject = lesson.subject.replace("(" + lesson.type + ")", "").trim();
-                Log.d(TAG, "Found lesson type: " + lesson.type);
-            }
-
-            // Дополнительный поиск в отдельных элементах
-            if (lesson.type == null) {
-                Elements typeElements = cell.select("b");
-                for (Element typeElement : typeElements) {
-                    String typeText = typeElement.text().trim();
-                    if (typeText.matches("ЛК|ЛБ|ПР|СЕМ|ЗЧ|ЭК|КР|КП")) {
-                        lesson.type = typeText;
-                        Log.d(TAG, "Found lesson type in separate element: " + lesson.type);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 5. Поиск информации о преподавателе
-        Elements teacherElements = cell.select("a[href*=\"user\"], a[href*=\"teacher\"]");
-        if (!teacherElements.isEmpty()) {
-            Element teacherElement = teacherElements.first();
-            lesson.teacher = teacherElement.text().trim();
-            lesson.teacherUrl = completeUrl(teacherElement.attr("href"));
-            Log.d(TAG, "Teacher found: " + lesson.teacher);
-        }
-
-        // 6. Поиск информации о аудитории
-        Elements roomElements = cell.select("a[href*=\"pomeschenie\"], a[href*=\"sooruzhenie\"]");
-        for (Element roomElement : roomElements) {
-            String roomText = roomElement.text().trim();
-            if (roomText.matches("\\d+[а-яА-Я]?") || roomText.matches("к\\.\\s*\\d+")) {
-                lesson.room = roomText;
-                lesson.roomUrl = completeUrl(roomElement.attr("href"));
-                Log.d(TAG, "Room found: " + lesson.room);
-                break;
-            }
-        }
-
-        // 7. Сбор информации о местоположении
-        if (lesson.room != null) {
-            lesson.location = lesson.room;
-            // Поиск здания
-            Elements buildingElements = cell.select("a[href*=\"sooruzhenie\"]");
-            for (Element buildingElement : buildingElements) {
-                String buildingText = buildingElement.text().trim();
-                if (buildingText.matches("к\\.\\s*\\d+") || buildingText.matches("\\d+")) {
-                    lesson.building = buildingText;
-                    lesson.buildingUrl = completeUrl(buildingElement.attr("href"));
-                    lesson.location = lesson.building + ", " + lesson.room;
-                    Log.d(TAG, "Building found: " + lesson.building);
-                    break;
-                }
-            }
-        }
-
-        Log.d(TAG, "Final lesson: " + (lesson.subject != null ? lesson.subject : "null") + " at " + lesson.time);
         return lesson;
     }
 
     private int calculateDynamicWaitTime(int contentLength) {
-        // Базовое время + дополнительное время в зависимости от размера контента
-        int baseTime = 10; // 1 секунда
-        int additionalTime = contentLength / 1000; // 1 мс на каждые 1000 символов
-
-        // Ограничиваем максимальное время ожидания
-        return Math.min(baseTime + additionalTime, 50000); // Максимум 5 секунд
-    }
-    private String completeUrl(String url) {
-        if (url != null && url.startsWith("/")) {
-            return "https://rasp.tpu.ru" + url;
-        }
-        return url;
+        int baseTime = 10;
+        int additionalTime = contentLength / 1000;
+        return Math.min(baseTime + additionalTime, 5000);
     }
     public List<Schedule> getFullYearSchedule(String groupId, int year) throws IOException {
         List<Schedule> yearSchedule = new ArrayList<>();
@@ -869,26 +858,22 @@ public class TPUScheduleParser {
             Log.e(TAG, "Error loading cookies: " + e.getMessage());
         }
     }
-
-    // Модели данных
     public static class School {
         public String id;
         public String name;
         public List<Group> groups;
     }
-
     public static class Group {
         public String id;
         public String name;
     }
-
     public static class Schedule {
         public String groupId;
-        public String groupName;
         public int year;
         public int weekNumber;
         public String weekType;
         public String datesRange;
+        public String[] dates = new String[7]; // Даты для каждого дня недели
         public List<List<Lesson>> days = new ArrayList<>();
 
         public Schedule() {
@@ -903,18 +888,12 @@ public class TPUScheduleParser {
             }
         }
     }
-
     public static class Lesson {
         public String subject;
-        public String subjectUrl;
         public String type;
         public String teacher;
-        public String teacherUrl;
         public String location;
-        public String building;
-        public String buildingUrl;
-        public String room;
-        public String roomUrl;
         public String time;
+        public String date;
     }
 }

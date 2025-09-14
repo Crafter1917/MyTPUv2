@@ -68,6 +68,13 @@
                     android:layout_marginStart="4dp"/>
             </LinearLayout>
 
+            <Button
+                android:id="@+id/btnSolveCaptcha"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Решить капчу"
+                android:visibility="gone" />
             <!-- Контейнер для поиска УТИ -->
             <LinearLayout
                 android:id="@+id/utiSearchContainer"

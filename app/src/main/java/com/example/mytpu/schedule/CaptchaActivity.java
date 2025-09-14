@@ -59,6 +59,7 @@ public class CaptchaActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                syncCookiesBetweenWebViewAndOkHttp();
 
                 if ("decrypt".equals(purpose)) {
                     handleDecryption();
@@ -125,9 +126,10 @@ public class CaptchaActivity extends AppCompatActivity {
     private void saveCookies() {
         try {
             CookieManager cookieManager = CookieManager.getInstance();
-            String cookies = cookieManager.getCookie("https://rasp.tpu.ru");
+            String cookies = cookieManager.getCookie("https://rasp.tpu.ru/gruppa_43908/2025/1/view.html");
 
             if (cookies != null && !cookies.isEmpty()) {
+                // Декодируем и нормализуем куки
                 String decodedCookies = Uri.decode(cookies);
                 String normalizedCookies = decodedCookies
                         .replaceAll("\\s+", "")
@@ -136,40 +138,60 @@ public class CaptchaActivity extends AppCompatActivity {
 
                 Log.d(TAG, "Normalized cookies: " + normalizedCookies);
 
+                // Сохраняем в SharedPreferences
                 SharedPreferences prefs = getSharedPreferences("TPUCookies", MODE_PRIVATE);
                 prefs.edit().putString("cookies", normalizedCookies).apply();
 
-                SharedPreferences appPrefs = getApplicationContext()
-                        .getSharedPreferences("TPUCookies", MODE_PRIVATE);
-                appPrefs.edit().putString("cookies", normalizedCookies).apply();
-                appPrefs.edit().commit();
+                // Синхронизируем куки с парсером
+                if (tpuParser != null) {
+                    tpuParser.forceSetCookies(normalizedCookies);
+                }
 
-                syncCookiesBetweenWebViewAndOkHttp();
                 Log.d(TAG, "Cookies saved successfully");
+
+                // Возвращаем успешный результат
+                setResult(RESULT_OK);
+                finish();
             }
         } catch (Exception e) {
             Log.e(TAG, "Error saving cookies: " + e.getMessage());
+            setResult(RESULT_CANCELED);
+            finish();
         }
     }
-
+    // В CaptchaActivity добавим синхронизацию
+    private void syncCookies() {
+        CookieManager cookieManager = CookieManager.getInstance();
+        String cookies = cookieManager.getCookie(BASE_URL);
+        if (cookies != null) {
+            SharedPreferences prefs = getSharedPreferences("TPUCookies", MODE_PRIVATE);
+            prefs.edit().putString("cookies", cookies).apply();
+        }
+    }
     private void syncCookiesBetweenWebViewAndOkHttp() {
         try {
             android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
-            String webViewCookies = cookieManager.getCookie("https://rasp.tpu.ru");
+            String webViewCookies = cookieManager.getCookie("https://rasp.tpu.ru/gruppa_43908/2025/1/view.html");
 
             if (webViewCookies != null && !webViewCookies.isEmpty()) {
+                // Декодируем и нормализуем куки
                 String decodedCookies = Uri.decode(webViewCookies);
                 String normalizedCookies = decodedCookies
                         .replaceAll("\\s+", "")
                         .replaceAll(";+", ";")
                         .replaceAll("=+", "=");
 
+                // Сохраняем в SharedPreferences
                 SharedPreferences prefs = getSharedPreferences("TPUCookies", MODE_PRIVATE);
                 prefs.edit().putString("cookies", normalizedCookies).apply();
 
+                // Синхронизируем с парсером
                 if (tpuParser != null) {
                     tpuParser.forceSetCookies(normalizedCookies);
+                    tpuParser.syncCookiesFromWebView(); // Дополнительная синхронизация
                 }
+
+                Log.d(TAG, "Cookies fully synced: " + normalizedCookies);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error syncing cookies: " + e.getMessage());
